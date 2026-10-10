@@ -2,6 +2,10 @@
 
 A companion app for the Black Tusk clan of Largashbur on the Daedric Online Skyrim roleplay server. It runs in any browser and installs to a phone's home screen, where it opens full screen like a native app.
 
+**Live site:** https://blacktusks.github.io/
+
+The repository is named `blacktusks.github.io` inside the `blacktusks` GitHub organisation, which is what gives the site that address.
+
 Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or Daedric Online.
 
 ## What is in it
@@ -33,8 +37,8 @@ Use a Supabase project made for this app alone: the migration takes away the def
 1. Create a project at supabase.com (free plan).
 2. **SQL Editor**: paste `supabase/migrations/0001_black_tusk.sql` and run it.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
-4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api`, or paste `index.ts` into a new function named `clan-api` in the dashboard).
-5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32`. Keep a copy somewhere safe: without it the saved password copies cannot be read.
+4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
+5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
 6. Create the first Forgemaster. In **Authentication > Users**, add a user with the email `yourname@blacktusk.invalid` and a password, with "Auto Confirm User" on. Then in the SQL Editor:
 
    ```sql
@@ -44,13 +48,18 @@ Use a Supabase project made for this app alone: the migration takes away the def
    ```
 
    The first sign-in asks for a new password, which also starts the saved copy for that account. Every other account is made inside the app from the Members screen.
-7. Copy `.env.example` to `.env.production` and fill in the project URL and anon (publishable) key from **Project Settings > API**. Both are safe to commit: access is decided by the database rules, not by hiding the key.
+7. `.env.production` holds the project URL and the **publishable** key (`sb_publishable_...`, from **Project Settings > API Keys**). Both are safe to commit: access is decided by the database rules, not by hiding the key. Use the publishable key rather than the legacy `anon` key, which Supabase is retiring.
 
 Members sign in with a name. Behind the scenes Supabase sees `name@blacktusk.invalid`. `.invalid` is a reserved ending that can never receive mail, so nobody can trigger a password-reset email for a member. If Supabase ever refuses that ending, set `LOGIN_EMAIL_DOMAIN` (function secret) and `VITE_LOGIN_EMAIL_DOMAIN` (`.env.production`) to a domain you own.
 
 ## Publishing
 
-Push to `main`. The workflow in `.github/workflows/deploy.yml` builds the app and publishes it to GitHub Pages. The first run turns Pages on for the repository.
+Once, in the repository on GitHub: **Settings > Pages > Source: GitHub Actions**.
+
+After that, every change to `main` is built and published by `.github/workflows/deploy.yml`. There are two ways to change `main`:
+
+- **With git**: push as usual.
+- **Without git**: on the repository page choose **Add file > Upload files**, drop in a zip of the whole project and commit. The workflow unpacks the zip over the repository, removes it, then builds and publishes. Small text fixes can also be made with the pencil icon on any file. The `.github` folder is never taken from a zip.
 
 ## Day to day
 
@@ -65,7 +74,7 @@ Push to `main`. The workflow in `.github/workflows/deploy.yml` builds the app an
 - The copy cannot drift from the real password. The function stages the new copy, and a database trigger moves it into place in the same transaction that changes the password. A password changed any other way drops the copy and asks the member to set one through the app.
 - Anyone holding both the database and `VAULT_KEY` can read every password. Guard the Supabase account with a strong password and two-factor sign-in.
 - Every permission in the table at the top is enforced in the database, not only in the screens. Who posted a notice, who pinged a vein and who reviewed it are stamped by the database and cannot be rewritten. Password views, password resets and member changes are written to `audit_log`, which only the Forgemaster can read.
-- All project sites of one GitHub account share the address `<account>.github.io`, and so share browser storage. Publish this app from an account that hosts nothing you do not trust, or give it a custom domain.
+- All sites published from one GitHub account or organisation share the address `<name>.github.io`, and so share browser storage. Keep the `blacktusks` organisation for this app alone: do not publish other sites from it.
 
 ## Working on it
 
