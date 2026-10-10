@@ -1,0 +1,75 @@
+# Builds the app and publishes it to GitHub Pages on every change to main.
+#
+# Updating without git: upload a zip of the project (Add file > Upload files)
+# to the top of this repository. This workflow unpacks it into the repository,
+# removes the zip, then builds and publishes as usual. The .github folder is
+# never taken from a zip; edit workflow files here on GitHub.
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.app.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Unpack an uploaded zip, if there is one
+        run: |
+          set -euo pipefail
+          shopt -s nullglob dotglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then echo "No zip to unpack."; exit 0; fi
+          zip="${zips[0]}"
+          mkdir "$RUNNER_TEMP/src"
+          unzip -q "$zip" -d "$RUNNER_TEMP/src"
+          src="$RUNNER_TEMP/src"
+          entries=("$src"/*)
+          if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then src="${entries[0]}"; fi
+          if [ ! -f "$src/package.json" ]; then echo "::error::$zip does not contain the app (no package.json at its top)."; exit 1; fi
+          rm -rf "$src/.github" "$src/.git"
+          for f in *; do
+            case "$f" in .git|.github) ;; *) rm -rf -- "$f" ;; esac
+          done
+          cp -a "$src"/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Unpack $zip"
+          git push
+      - id: app
+        run: echo "present=$([ -f package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.app.outputs.present == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.app.outputs.present == 'true'
+        run: npm ci
+      - if: steps.app.outputs.present == 'true'
+        run: npm run build
+      - if: steps.app.outputs.present == 'true'
+        uses: actions/configure-pages@v6
+      - if: steps.app.outputs.present == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+  deploy:
+    needs: build
+    if: needs.build.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
