@@ -1,0 +1,15 @@
+import { boot } from './harness.mjs';
+const t = await boot();
+const d = await t.open();
+await d.waitForSelector('canvas.banner.is-ready', { timeout: 15000 }).catch(() => console.log('banner not ready'));
+await d.waitForTimeout(2500);
+await t.shot(d, 'menu-guest-desktop');
+await t.signIn(d, 'nick');
+await d.waitForTimeout(2500);
+await t.shot(d, 'menu-member-desktop');
+const m = await t.open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await t.signIn(m, 'nick');
+await m.waitForTimeout(2500);
+await t.shot(m, 'menu-member-phone');
+console.log('errors:', t.errors);
+await t.stop(); process.exit(0);

@@ -1,2 +1,107 @@
-# black-tusk-companion
-Companion app for The Black Tusks, an orc clan on Skyrim: Daedric Online
+# Black Tusk Companion
+
+A companion app for the Black Tusk clan of Largashbur on the Daedric Online Skyrim roleplay server. It runs in any browser and installs to a phone's home screen, where it opens full screen like a native app.
+
+Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or Daedric Online.
+
+## What is in it
+
+| Screen | Who can change it |
+| --- | --- |
+| Code of Mauloch | Fixed text. Open to guests. |
+| Black Tusk Oath | Fixed text, with the member's own name in it. |
+| Notice Board: announcements | Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster, Daedric. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
+| Notice Board: change log | Forgemaster only. |
+| Members | Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags. Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
+| Mine of the Black Tusks | Officers. Same visibility choices as notices. |
+| Expansion Goals | Officers edit stages and update what has been gathered. |
+| Mining Map | Any member pings an ore vein. Officers and Daedric approve or deny pings; their own markers go straight on the map. |
+| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. |
+
+Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag and keeps full access.
+
+## How it is put together
+
+- **App**: React and Vite, published as static files to GitHub Pages. `vite-plugin-pwa` makes it installable and lets the app shell open offline.
+- **Backend**: a free Supabase project. Supabase Auth holds the accounts; Postgres row level security enforces every permission in the table above; one Edge Function (`clan-api`) handles account management and reads the clan Discord's Server Widget.
+- **Game data**: `public/data` (11,900 items, their recipes and 392 map places) and `public/map` (the world map) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+
+## Setting up the backend (once)
+
+Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
+
+1. Create a project at supabase.com (free plan).
+2. **SQL Editor**: paste `supabase/migrations/0001_black_tusk.sql` and run it.
+3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
+4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api`, or paste `index.ts` into a new function named `clan-api` in the dashboard).
+5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32`. Keep a copy somewhere safe: without it the saved password copies cannot be read.
+6. Create the first Forgemaster. In **Authentication > Users**, add a user with the email `yourname@blacktusk.invalid` and a password, with "Auto Confirm User" on. Then in the SQL Editor:
+
+   ```sql
+   insert into public.profiles (id, username, display_name, tags, must_change_password)
+   select id, 'yourname', 'Your Name', array['right_tusk', 'forgemaster'], true
+   from auth.users where email = 'yourname@blacktusk.invalid';
+   ```
+
+   The first sign-in asks for a new password, which also starts the saved copy for that account. Every other account is made inside the app from the Members screen.
+7. Copy `.env.example` to `.env.production` and fill in the project URL and anon (publishable) key from **Project Settings > API**. Both are safe to commit: access is decided by the database rules, not by hiding the key.
+
+Members sign in with a name. Behind the scenes Supabase sees `name@blacktusk.invalid`. `.invalid` is a reserved ending that can never receive mail, so nobody can trigger a password-reset email for a member. If Supabase ever refuses that ending, set `LOGIN_EMAIL_DOMAIN` (function secret) and `VITE_LOGIN_EMAIL_DOMAIN` (`.env.production`) to a domain you own.
+
+## Publishing
+
+Push to `main`. The workflow in `.github/workflows/deploy.yml` builds the app and publishes it to GitHub Pages. The first run turns Pages on for the repository.
+
+## Day to day
+
+- **Add a member**: Members > Add member. The app shows a temporary password once; the member must choose their own at first sign-in.
+- **Forgotten password**: the Forgemaster opens the member in Members and uses Show current password or Set password. Every view is written to the audit log (`audit_log` table).
+- **Online status**: Members > Discord link (Forgemaster). Turn on the Server Widget in the clan Discord, paste the Server ID, and put each member's Discord name on their profile. "In the realm" means Discord shows them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim.
+- **Install on a phone**: iPhone: open in Safari, Share, Add to Home Screen. Android: open in Chrome, menu, Install app.
+
+## About passwords and safety
+
+- Sign-in passwords are hashed by Supabase Auth. Because the clan asked for the Forgemaster to be able to read a member's current password, a second copy is kept in the `password_vault` table, encrypted with AES-256-GCM under `VAULT_KEY`. The key lives only in the function's secrets; the table is closed to every app user; each copy is bound to its owner and padded to one length. Members are told on the change-password screen that the Forgemaster can read their password.
+- The copy cannot drift from the real password. The function stages the new copy, and a database trigger moves it into place in the same transaction that changes the password. A password changed any other way drops the copy and asks the member to set one through the app.
+- Anyone holding both the database and `VAULT_KEY` can read every password. Guard the Supabase account with a strong password and two-factor sign-in.
+- Every permission in the table at the top is enforced in the database, not only in the screens. Who posted a notice, who pinged a vein and who reviewed it are stamped by the database and cannot be rewritten. Password views, password resets and member changes are written to `audit_log`, which only the Forgemaster can read.
+- All project sites of one GitHub account share the address `<account>.github.io`, and so share browser storage. Publish this app from an account that hosts nothing you do not trust, or give it a custom domain.
+
+## Working on it
+
+```
+npm install
+npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
+npm run dev              # the app on :5173
+node tests/api.mjs       # 141 permission checks against real Postgres rules
+node tests/e2e.mjs       # 68 browser checks of every screen and role
+node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
+```
+
+The local backend (`dev/server.mjs`) runs the real migration and the real function against an in-process Postgres, so the permission rules under test are the ones that ship. Test accounts: `nick`, `gorza`, `ugak`, `sharn`, `velyn`, `sheo`, password `TestPass123`.
+
+## Rebuilding the game data
+
+When the server's mod collection changes, run on a PC with the collection installed (Python 3, no extra packages):
+
+```
+python tools/extract_game_data.py  <out folder>     # items, recipes, map markers
+python tools/extract_heightmap.py  <out folder>     # terrain heights for map shading
+```
+
+Then, anywhere with Python, Pillow, NumPy and OpenCV:
+
+```
+python tools/build_catalog.py <out folder> public/data
+python tools/build_map.py     # stitches and shades the world map (edit the paths at the top)
+python tools/build_tiles.py map_shaded.png map_geo.json public/map
+```
+
+The extractors only read. Paths to the game folder are at the top of `extract_game_data.py`.
+
+## Credits
+
+- The Elder Scrolls V: Skyrim and its item names, map data and terrain belong to Bethesda Softworks.
+- Map textures come from **A Quality World Map** by IcePenguin, the map mod in the Daedric Online collection. Terrain shading and water are computed from the installed game's height data.
+- Item and recipe data includes content from the mods in the Daedric Online collection and from the server's own plugins.
+- Clan banner art and the Largashbur image were supplied by the clan.
