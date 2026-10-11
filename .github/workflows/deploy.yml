@@ -4,6 +4,10 @@
 # to the top of this repository. This workflow unpacks it into the repository,
 # removes the zip, then builds and publishes as usual. The .github folder is
 # never taken from a zip; edit workflow files here on GitHub.
+#
+# The map tiles (public/map) are most of the project's size and rarely change.
+# A zip that leaves that folder out keeps the map already in the repository, so
+# everyday updates stay small. Include the folder only when the map itself changed.
 name: Deploy to GitHub Pages
 on:
   push:
@@ -37,10 +41,15 @@ jobs:
           if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then src="${entries[0]}"; fi
           if [ ! -f "$src/package.json" ]; then echo "::error::$zip does not contain the app (no package.json at its top)."; exit 1; fi
           rm -rf "$src/.github" "$src/.git"
+          kept_map=""
+          if [ ! -d "$src/public/map" ] && [ -d public/map ]; then
+            kept_map="$RUNNER_TEMP/map-kept"; mv public/map "$kept_map"; echo "The zip has no map; keeping the one in the repository."
+          fi
           for f in *; do
             case "$f" in .git|.github) ;; *) rm -rf -- "$f" ;; esac
           done
           cp -a "$src"/. .
+          if [ -n "$kept_map" ]; then mkdir -p public; mv "$kept_map" public/map; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
