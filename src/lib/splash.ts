@@ -40,7 +40,10 @@ function settle() {
     if (now === last) same++; else { same = 0; last = now; }
     if (same >= 4 || frames > 90) remove(); else requestAnimationFrame(tick);
   };
+  // A tab opened in the background draws no frames, so there is nothing to wait for there.
+  if (document.hidden) { remove(); return; }
   requestAnimationFrame(tick);
+  window.setTimeout(remove, 1800);
 }
 
 /** Add something the loading screen must wait for. Does nothing once it has gone. */
