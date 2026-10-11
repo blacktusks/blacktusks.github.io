@@ -4,3 +4,4 @@ dist/
 tests/shots/
 .DS_Store
 tools/art/
+__pycache__/

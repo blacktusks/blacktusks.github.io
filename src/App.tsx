@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { CONFIGURED } from './config';
 import { useAuth } from './lib/auth';
 import { onUpdateReady, reloadIntoUpdate } from './lib/update';
+import { splashPass } from './lib/splash';
 import MainMenu from './screens/MainMenu';
 import SignIn from './screens/SignIn';
 import CodeOfMauloch from './screens/CodeOfMauloch';
@@ -28,6 +29,12 @@ function MembersOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Sits beside the screens, so it is drawn only once the first screen is. Tells the loading screen. */
+function FirstScreenDrawn() {
+  useEffect(() => { splashPass('screen'); }, []);
+  return null;
+}
+
 /** Shown only when a new build arrived while someone was mid-task. */
 function UpdateBar() {
   const [ready, setReady] = useState(false);
@@ -43,6 +50,7 @@ function UpdateBar() {
 
 export default function App() {
   const { ready, profile, reload } = useAuth();
+  useEffect(() => { if (ready || !CONFIGURED) splashPass('session'); if (!CONFIGURED) splashPass('screen'); }, [ready]);
   if (!CONFIGURED) {
     return (<><Scene quiet /><div className="page"><div className="page__body"><div className="panel" style={{ marginTop: '20vh' }}>
       <div className="panel__head"><span className="panel__title">The app is not connected yet</span></div>
@@ -67,6 +75,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {profile?.must_change_password && <ChangePassword forced onDone={reload} />}
+      <FirstScreenDrawn />
       <UpdateBar />
     </Suspense>
     </ErrorBoundary>

@@ -120,6 +120,19 @@ function checkDiscord(d: unknown): string | null {
   if (s.length > 64 || /\p{Cc}/u.test(s)) throw new Fail(400, "Discord names can be at most 64 characters.");
   return s;
 }
+const SKILLS = ["one_handed", "two_handed", "dual_wielder", "armor", "shield", "cook", "alchemist", "blacksmith", "woodcutter",
+  "tailor", "scholar", "miner", "first_aid", "lockpicking", "skinner", "harvester", "artifact_scavenger"];
+// Up to three masteries, each a known skill at level 0 to 5, no skill twice. The database checks the same.
+function checkMasteries(m: unknown): { skill: string; level: number }[] {
+  if (!Array.isArray(m) || m.length > 3) throw new Fail(400, "Choose up to three masteries.");
+  const seen = new Set<string>();
+  return m.map((one) => {
+    const skill = String((one as any)?.skill ?? ""), level = Number((one as any)?.level);
+    if (!SKILLS.includes(skill) || !Number.isInteger(level) || level < 0 || level > 5 || seen.has(skill)) throw new Fail(400, "That list of masteries is not valid.");
+    seen.add(skill);
+    return { skill, level };
+  });
+}
 function checkTags(t: unknown): string[] {
   if (!Array.isArray(t) || t.some((x) => typeof x !== "string")) throw new Fail(400, "Tags must be a list.");
   const tags = [...new Set(t as string[])];
@@ -270,6 +283,7 @@ async function handle(req: Request): Promise<Response> {
       if (body.display_name !== undefined) patch.display_name = checkDisplayName(body.display_name);
       if (body.discord_name !== undefined) patch.discord_name = checkDiscord(body.discord_name);
       if (body.tags !== undefined) patch.tags = tags;
+      if (body.masteries !== undefined) patch.masteries = checkMasteries(body.masteries);
       const rename = body.username !== undefined && checkUsername(body.username) !== t.username ? checkUsername(body.username) : null;
       if (rename) {
         if (!has(me.tags, "forgemaster")) throw new Fail(403, "Only a Forgemaster can change a sign-in name.");

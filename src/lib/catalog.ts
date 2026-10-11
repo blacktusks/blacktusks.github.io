@@ -6,6 +6,8 @@ const CATS: Cat[] = ['weapons', 'apparel', 'potions', 'scrolls', 'food', 'ingred
 export interface Item {
   key: string; name: string; cat: Cat; type: string; cls: string; value: number; weight: number;
   stat: number | null; src: string; generic: boolean; enchanted: boolean; custom?: boolean; lower: string;
+  /** Name of the item's picture in /items, rendered from its game model. Absent when there is none. */
+  pic?: string;
 }
 export interface Recipe { b: string; n: number; i: [string, number][]; r?: string; x?: 1 }
 export interface Detail {
@@ -15,12 +17,16 @@ export interface Detail {
 
 let itemsPromise: Promise<Item[]> | null = null;
 export function loadItems(): Promise<Item[]> {
-  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; items: any[][] }) =>
-    d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags]) => ({
+  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; pics?: string[]; items: any[][] }) =>
+    d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags, pic]) => ({
       key, name, cat, type, cls, value, weight, stat, src: d.sources[src], generic: !!(flags & 1), enchanted: !!(flags & 2), lower: name.toLowerCase(),
+      pic: pic != null && pic >= 0 ? d.pics?.[pic] : undefined,
     })));
   return itemsPromise;
 }
+/** Address of an item's rendered picture. */
+export const itemPictureUrl = (pic: string) => `./items/${pic}.webp`;
+
 let detailsPromise: Promise<Record<string, Detail>> | null = null;
 export function loadDetails(): Promise<Record<string, Detail>> {
   detailsPromise ??= fetch(dataUrl('details.json')).then((r) => r.json());

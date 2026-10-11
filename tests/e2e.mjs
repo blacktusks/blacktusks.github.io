@@ -11,8 +11,17 @@ const has = async (page, role, name) => (await page.getByRole(role, { name, exac
 const user = async (name, password, opts) => { const p = await t.open(opts); await t.signIn(p, name, password); return p; };
 
 console.log('guest');
+{
+  const html = await (await fetch(t.base)).text();
+  ok(/<div id="splash"/.test(html) && html.indexOf('id="splash"') < html.indexOf('id="root"'), 'the loading screen is in the page itself, ahead of the app');
+}
 const g = await t.open();
 await g.waitForSelector('.menu__nav');
+await g.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 15000 }).catch(() => undefined);
+ok(await g.evaluate(() => !document.getElementById('splash') && document.documentElement.classList.contains('is-loaded')), 'the loading screen lifts once the menu is whole');
+ok(await g.evaluate(() => document.querySelector('.scene').classList.contains('is-sharp') && document.querySelector('.menu__banner .banner').classList.contains('is-ready')),
+  'and by then the picture behind the menu and the banner have both arrived');
+ok(await g.evaluate(() => { const se = document.scrollingElement; return se.scrollHeight <= window.innerHeight + 1 && se.scrollWidth <= window.innerWidth + 1; }), 'the main menu never scrolls');
 ok((await menu(g)).join('|') === 'Sign In|Code of Mauloch', 'guest menu is Sign In and Code of Mauloch', (await menu(g)).join('|'));
 await g.getByRole('button', { name: 'Code of Mauloch' }).click();
 ok((await g.locator('.tenet').count()) === 7, 'Code of Mauloch shows seven tenets');
@@ -78,9 +87,14 @@ await durak.context().close();
   await once.context().close();
 }
 
-await nick.getByText('Durak Iron-Jaw').click(); await nick.getByRole('button', { name: 'Show current password' }).click(); await nick.waitForSelector('.secret__value');
+await nick.getByText('Durak Iron-Jaw').click(); await nick.waitForSelector('.modal');
+ok((await nick.locator('.modal input').count()) === 0 && !(await has(nick, 'button', 'Show current password')) && (await nick.locator('.tagpick').count()) === 0,
+  'an officer opening a member sees the plain card first, with nothing to edit');
+await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+await nick.getByRole('button', { name: 'Show current password' }).click(); await nick.waitForSelector('.secret__value');
 ok((await nick.locator('.secret__value').textContent()) === 'DurakOwnPass77', 'Forgemaster can view the member\'s current password');
 await nick.locator('.tagpick').getByRole('button', { name: 'Deceased' }).click(); await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.note');
+ok((await nick.locator('.modal input').count()) === 0, 'saving goes back to the plain card');
 await nick.getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(400);
 ok((await nick.locator('.roster__row.is-fallen').count()) === 1, 'Deceased tag is applied and shown');
 const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 9, 'a Deceased member keeps full access');
@@ -89,6 +103,9 @@ await durak2.context().close();
 { // a member fills in their own card: bio, masteries, hours
   const own = await user('velyn'); await go(own, '/members', 900);
   await own.locator('.roster__row', { hasText: '(you)' }).click(); await own.waitForSelector('.modal');
+  ok((await own.locator('.modal textarea, .modal input, .modal select').count()) === 0 && (await own.textContent('.modal')).includes('Nothing on your card yet'),
+    'your own card opens as others see it, not as a form');
+  await own.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
   await own.getByLabel('Bio').fill('Trader out of the Rift. Buys pelts, sells rumours.');
   await own.getByRole('button', { name: 'Add a mastery' }).click(); await own.getByLabel('Mastery 1').selectOption('skinner');
   await own.locator('.masterypick__row').nth(0).getByRole('button', { name: 'Level 5' }).click();
@@ -98,29 +115,52 @@ await durak2.context().close();
   await own.getByLabel('Sat 9a to 10a').click();
   await own.getByRole('button', { name: 'Save', exact: true }).click(); await own.waitForSelector('.note'); await own.getByRole('button', { name: 'Close' }).click(); await own.waitForTimeout(500);
   ok((await own.locator('.roster__row', { hasText: '(you)' }).locator('.mastery--mini').count()) === 2, 'their masteries show beside their name in the list');
-  await own.locator('.roster__row', { hasText: '(you)' }).click(); await own.waitForSelector('.modal');
-  ok((await own.getByLabel('Bio').inputValue()).startsWith('Trader out of the Rift') && await own.getByLabel('Sat 9a to 10a').getAttribute('aria-pressed') === 'true', 'the card is still there when reopened');
+  await own.locator('.roster__row', { hasText: '(you)' }).click(); await own.waitForSelector('.modal .about');
+  const mine = (await own.locator('.modal .about').textContent()).replace(/\s+/g, ' ');
+  ok(mine.includes('Buys pelts') && mine.includes('Skinner') && mine.includes('These hours are shown in your time'), 'reopened, your card shows what you saved and says whose clock the hours are on', mine.slice(0, 160));
+  await own.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+  ok((await own.getByLabel('Bio').inputValue()).startsWith('Trader out of the Rift') && await own.getByLabel('Sat 9a to 10a').getAttribute('aria-pressed') === 'true', 'Edit opens the form with the saved card in it');
   ok((await own.locator('.tagpick').count()) === 0, 'a member editing their card is offered no tags to change');
   await own.context().close();
   await go(nick, '/members', 900); await nick.getByText('Velyn of the Rift').click(); await nick.waitForSelector('.modal .about');
   const about = (await nick.locator('.modal .about').textContent()).replace(/\s+/g, ' ');
   ok(about.includes('Lvl 5') && about.includes('Skinner') && about.includes('Lockpicking') && about.includes('Buys pelts') && about.includes('Usually around'), 'other members see the bio, masteries and hours', about.slice(0, 200));
   ok((await nick.locator('.modal .about .mastery--l5 .mastery__spark').count()) === 3 && (await nick.locator('.modal .about .mastery--l0 .mastery__spark').count()) === 0, 'a level 5 tag sparkles; a level 0 tag does not');
-  ok((await nick.locator('.modal').getByLabel('Bio').count()) === 0, "an officer cannot rewrite another member's bio");
+  ok(about.includes('These hours are shown in your time') && about.includes('converted automatically'), 'the hours carry a note that they are converted to the viewer\'s own time', about.slice(-220));
+  await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+  ok((await nick.locator('.modal').getByLabel('Bio').count()) === 0 && (await nick.locator('.availedit').count()) === 0, "an officer cannot rewrite another member's bio or hours");
+  ok((await nick.locator('.masterypick__row').count()) === 2, 'but the officer is offered their masteries');
+  await nick.locator('.masterypick__row').nth(1).getByRole('button', { name: 'Level 3' }).click();
+  await nick.getByRole('button', { name: 'Add a mastery' }).click(); await nick.getByLabel('Mastery 3').selectOption('miner');
+  await nick.locator('.masterypick__row').nth(2).getByRole('button', { name: 'Level 2' }).click();
+  await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.note'); await nick.waitForTimeout(500);
+  const after = (await nick.locator('.modal .about').textContent()).replace(/\s+/g, ' ');
+  ok(/Lvl 3\s*Lockpicking/.test(after) && /Lvl 2\s*Miner/.test(after) && after.includes('Buys pelts'), "an officer changes another member's masteries; their bio is untouched", after.slice(0, 160));
   await nick.getByRole('button', { name: 'Close' }).first().click(); await nick.waitForTimeout(300);
+  {
+    const far = await t.open({ timezoneId: 'Europe/London' }); await t.signIn(far, 'ugak'); await go(far, '/members', 900);
+    await far.getByText('Velyn of the Rift').click(); await far.waitForSelector('.modal .about');
+    const note = (await far.locator('.avail__zone').textContent()).replace(/\s+/g, ' ');
+    ok(note.includes('shown in your time') && note.includes('Europe/London') && /Their time zone is/.test(note), 'a viewer in another zone is told the hours are in their own time, and what the member\'s zone is', note);
+    await far.context().close();
+  }
 }
 const ugak = await user('ugak');
 await go(ugak, '/members', 900);
 ok(!(await has(ugak, 'button', 'Add member')) && !(await has(ugak, 'button', 'Discord link')), 'a Blooded member sees no admin buttons');
 await ugak.getByText('Gorza gra-Largash').click(); await ugak.waitForSelector('.modal');
 ok((await ugak.locator('.modal input').count()) === 0 && !(await has(ugak, 'button', 'Show current password')), 'another member\'s card is read-only');
+ok(!(await has(ugak, 'button', 'Edit')), 'and has no Edit button');
 await ugak.getByRole('button', { name: 'Close' }).click();
-await ugak.locator('.roster__row', { hasText: 'Ugak' }).click(); await ugak.getByLabel('Display name').fill('Ugak the Bold'); await ugak.getByRole('button', { name: 'Save', exact: true }).click();
-await ugak.waitForSelector('.note'); ok(await has(ugak, 'button', 'Change password'), 'own card offers Change password');
+await ugak.locator('.roster__row', { hasText: 'Ugak' }).click(); await ugak.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+ok(await has(ugak, 'button', 'Change password'), 'own card offers Change password once editing');
+await ugak.getByLabel('Display name').fill('Ugak the Bold'); await ugak.getByRole('button', { name: 'Save', exact: true }).click();
+await ugak.waitForSelector('.note');
 await ugak.getByRole('button', { name: 'Close' }).click(); await ugak.waitForTimeout(300);
 ok((await ugak.textContent('.roster')).includes('Ugak the Bold'), 'a member changes their own display name');
 const gorza = await user('gorza');
 await go(gorza, '/members', 900); await gorza.getByText('Sharn').click(); await gorza.waitForSelector('.modal');
+await gorza.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
 ok(!(await has(gorza, 'button', 'Show current password')), 'the Chieftain cannot view passwords');
 ok(await gorza.locator('.tagpick__one', { hasText: 'Forgemaster' }).isDisabled(), 'the Chieftain cannot hand out the Forgemaster tag');
 
@@ -157,7 +197,7 @@ ok((await sheo.locator('.paper').count()) === 1 && !(await has(sheo, 'button', '
 await gorza.context().close();
 
 console.log('expansion goals');
-const sharn = await user('sharn'); await go(sharn, '/expansion', 900);
+const sharn = await user('sharn'); await go(sharn, '/expansion', 900); await sharn.waitForSelector('.stage--total', { timeout: 10000 }).catch(() => undefined);
 ok((await sharn.locator('.stage').count()) === 6, 'five stages and the total are shown');
 ok((await sharn.locator('.stage .stagebar').count()) === 6 && (await sharn.locator('.overall').count()) === 0, 'every stage has its own progress bar; there is no single big one');
 ok((await sharn.locator('.stage--total').textContent()).replace(/\s+/g, ' ').includes('of 64,500 Septims'), 'the gold total is 64,500');
@@ -193,6 +233,19 @@ ok((await ugak.title()) === 'Mining Map | Black Tusk Companion', 'the map names 
   }
   await ugak.waitForTimeout(700);
   ok(await covered(), 'dragging stops at the border: nothing shows beyond the map');
+  // The map picture (7936 x 6272) has a flat blue strip round it: 192px on the left, 64 on top, 128 on the right, 188 below.
+  // Pull hard towards each side and ask the map which part of the picture is on screen.
+  const view = () => ugak.evaluate(() => document.querySelector('.map').dataset.view.split(',').map(Number));
+  for (const [side, dx, dy, inside] of [['left', 900, 0, (v) => v[0] >= 194], ['right', -900, 0, (v) => v[2] <= 7936 - 130], ['bottom', 0, -700, (v) => v[3] <= 6272 - 190], ['top', 0, 700, (v) => v[1] >= 66]]) {
+    for (let i = 0; i < 3; i++) {
+      await ugak.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await ugak.mouse.down();
+      await ugak.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 6 }); await ugak.mouse.up(); await ugak.waitForTimeout(350);
+    }
+    await ugak.waitForTimeout(600);
+    const v = await view();
+    ok(inside(v), `pulled to the ${side} edge, the blue strip round the map picture stays off screen`, v.join(','));
+  }
+  ok(await ugak.evaluate(() => getComputedStyle(document.querySelector('.map')).backgroundColor) === 'rgb(0, 0, 0)', 'behind the map is black');
   ok((await ugak.locator('.place--city span').allTextContents()).includes('Whiterun') && (await ugak.locator('.mapkey').textContent()).includes('Locations'), 'the walled cities are labelled and the filter is called Locations');
   await go(ugak, '/map', 2500);
 }
@@ -232,6 +285,23 @@ await go(ugak, '/ledger', 1800);
 ok((await ugak.title()) === 'Pricing Ledger | Black Tusk Companion', 'the ledger names its browser tab', await ugak.title());
 ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 4000, 'the ledger lists thousands of items');
 ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no Keys section');
+{ // the Misc section after the clan's trims
+  await ugak.getByRole('button', { name: 'Misc', exact: true }).click(); await ugak.waitForTimeout(500);
+  const types = await ugak.getByLabel('Type', { exact: true }).locator('option').allTextContents();
+  ok(!types.includes('Clutter') && !types.includes('Dragon Claw') && !types.includes('Misc') && types.includes('Ingot') && types.includes('Tool'), 'Misc has no Clutter, Dragon Claw or untyped Misc items', types.join(','));
+  await ugak.getByLabel('Type', { exact: true }).selectOption('Tool'); await ugak.waitForTimeout(400);
+  const tools = (await ugak.locator('.lrow .lc-name').allTextContents()).map((x) => x.trim()).sort();
+  ok(tools.join('|') === 'Linen Wrap|Lockpick', 'the only tools left are the lockpick and the linen wrap', tools.join('|'));
+  await ugak.getByLabel('Type', { exact: true }).selectOption(''); await ugak.getByLabel('Filter by name').fill('do not delete'); await ugak.waitForTimeout(400);
+  ok((await ugak.locator('.lrow').count()) === 0, '"Do Not Delete" is gone');
+  await ugak.getByRole('button', { name: 'All', exact: true }).click(); await ugak.getByLabel('Filter by name').fill('elven boots'); await ugak.waitForTimeout(400);
+  await ugak.locator('.lrow', { hasText: 'Elven Boots' }).first().click();
+  const pic = await ugak.waitForSelector('.icard__view img.is-render', { timeout: 8000 }).catch(() => null);
+  ok(pic && await ugak.waitForFunction(() => { const i = document.querySelector('.icard__view img'); return i && i.complete && i.naturalWidth === 384; }, null, { timeout: 8000 }).then(() => true, () => false),
+    'an item shows the picture made from its game model');
+  ok(await ugak.evaluate(() => { const v = document.querySelector('.icard__view').getBoundingClientRect(), i = document.querySelector('.icard__view img').getBoundingClientRect(); return i.top >= v.top - 1 && i.bottom <= v.bottom + 1 && i.height > 120; }),
+    'and the picture stays inside its frame, above the item card');
+}
 await ugak.getByLabel('Filter by name').fill('iron ingot'); await ugak.waitForTimeout(400); await ugak.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await ugak.waitForTimeout(500);
 const card = async (p) => (await p.locator('.ledger__card').textContent()).replace(/\s+/g, ' ');
 ok((await card(ugak)).includes('Unknown tier') && (await card(ugak)).includes('Price unknown'), 'items start at unknown tier and unknown price');
@@ -242,8 +312,8 @@ await sheo.getByLabel('Filter by name').fill('iron ingot'); await sheo.waitForTi
 await sheo.locator('.modal').getByLabel('Tier').selectOption('2'); await sheo.locator('.modal').getByLabel('Clan price').fill('12');
 const png = await sharp({ create: { width: 240, height: 200, channels: 3, background: '#f4f4f4' } }).composite([{ input: await sharp({ create: { width: 120, height: 90, channels: 3, background: '#7a3b22' } }).png().toBuffer(), left: 60, top: 55 }]).png().toBuffer();
 await sheo.getByLabel('Choose a picture').setInputFiles({ name: 'ingot.png', mimeType: 'image/png', buffer: png });
-await sheo.waitForSelector('.imgedit__view img'); await sheo.waitForTimeout(500);
-await sheo.getByRole('button', { name: 'Save', exact: true }).click(); await sheo.waitForSelector('.icard__view img', { timeout: 8000 });
+await sheo.waitForFunction(() => document.querySelector('.imgedit__view img')?.src.startsWith('blob:'), null, { timeout: 8000 }); await sheo.waitForTimeout(500);
+await sheo.getByRole('button', { name: 'Save', exact: true }).click(); await sheo.waitForSelector('.icard__view img:not(.is-render)', { timeout: 8000 });
 ok((await card(sheo)).includes('Tier 2') && (await card(sheo)).includes('12 septims'), 'Daedric sets tier and price');
 const px = await sheo.evaluate(async () => {
   const img = document.querySelector('.icard__view img'); const r = await fetch(img.src); const bmp = await createImageBitmap(await r.blob());

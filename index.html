@@ -18,6 +18,27 @@
     <title>Black Tusk Companion</title>
   </head>
   <body>
+    <!-- The loading screen. It is plain HTML so it shows before any script has arrived,
+         and src/lib/splash.ts takes it away once the screen behind it is whole. -->
+    <style>
+      #splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh;
+        padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom); background: #000 radial-gradient(90% 70% at 50% 42%, #3a0d08 0%, #170504 48%, #000 100%);
+        color: #ece3cf; text-align: center; transition: opacity 0.45s ease; }
+      #splash.is-done { opacity: 0; pointer-events: none; }
+      #splash img { width: min(62vw, 46vh, 420px); aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.8)); }
+      #splash div { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+      #splash b { font: 300 clamp(20px, 4.6vh, 34px)/1.1 'Antonio Variable', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.3em; text-transform: uppercase; margin-right: -0.3em; white-space: nowrap; }
+      #splash span { font: 400 clamp(12px, 1.9vh, 15px)/1.2 'Antonio Variable', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(236, 227, 207, 0.6); }
+      #splash i { display: block; width: min(60vw, 260px); height: 2px; background: rgba(236, 227, 207, 0.16); overflow: hidden; }
+      #splash i::after { content: ''; display: block; height: 100%; width: var(--p, 8%); background: linear-gradient(90deg, #e0522c, #ff9248); box-shadow: 0 0 10px #e0522c; transition: width 0.35s ease; }
+      @media (orientation: landscape) and (max-height: 480px) { #splash { flex-direction: row; gap: 5vw; } #splash img { width: min(36vw, 78vh); } #splash b { font-size: clamp(18px, 7vh, 30px); } #splash i { width: min(34vw, 240px); } }
+      @media (prefers-reduced-motion: reduce) { #splash, #splash i::after { transition: none; } }
+    </style>
+    <div id="splash" role="status" aria-live="polite" aria-label="Black Tusk Companion is loading">
+      <img src="./img/banner.webp" alt="" />
+      <div><b>The Black Tusks</b><i></i><span>Stoking the fire</span></div>
+    </div>
+    <noscript><style>#splash { display: none; }</style></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

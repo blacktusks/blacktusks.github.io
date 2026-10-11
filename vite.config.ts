@@ -35,6 +35,8 @@ export default defineConfig({
         runtimeCaching: [
           { urlPattern: /\/map\/.*\.(webp|json)$/, handler: 'CacheFirst', options: { cacheName: 'map-tiles', expiration: { maxEntries: 1400 } } },
           { urlPattern: /\/data\/.*\.json/, handler: 'CacheFirst', options: { cacheName: 'game-data-v2', expiration: { maxEntries: 6 } } },
+          // item pictures are named after what they show, so a name never changes its picture
+          { urlPattern: /\/items\/.*\.webp$/, handler: 'CacheFirst', options: { cacheName: 'item-pictures', expiration: { maxEntries: 500 } } },
           { urlPattern: /\/storage\/v1\/object\/public\//, handler: 'StaleWhileRevalidate', options: { cacheName: 'item-images', expiration: { maxEntries: 600 } } },
         ],
       },

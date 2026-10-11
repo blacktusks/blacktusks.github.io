@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { itemImageUrl, supabase } from '../lib/supabase';
 import { isHerald } from '../lib/roles';
-import { autoAcquire, autoUses, customItems, loadDetails, loadItems, type Cat, type Detail, type Item } from '../lib/catalog';
+import { autoAcquire, autoUses, customItems, itemPictureUrl, loadDetails, loadItems, type Cat, type Detail, type Item } from '../lib/catalog';
 import { cutout, type Cutout } from '../lib/cutout';
 import type { LedgerEntry } from '../lib/types';
 import { Scene } from '../components/Scene';
@@ -30,6 +30,14 @@ type SortKey = 'name' | 'type' | 'stat' | 'weight' | 'value' | 'tier' | 'price';
 const ROW = 36;
 const FAV_KEY = 'black-tusk-ledger-favorites';
 const readFavs = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); } catch { return new Set(); } };
+
+/** The picture on an item's card: one the clan uploaded, else the one rendered from the game model, else the category mark. */
+function ItemPicture({ item, uploaded }: { item: Item; uploaded: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const src = uploaded ? itemImageUrl(uploaded) : item.pic && !failed ? itemPictureUrl(item.pic) : null;
+  if (!src) return <span className="icard__ghost"><Glyph id={item.cat} size={120} /></span>;
+  return <img src={src} alt={item.name} className={uploaded ? '' : 'is-render'} decoding="async" onError={() => setFailed(true)} />;
+}
 
 function statLabel(i: Item) { return i.cat === 'weapons' ? 'Damage' : i.cat === 'apparel' ? 'Armor' : ''; }
 
@@ -100,7 +108,7 @@ function EntryEditor({ item, entry, detail, onClose, onSaved }: { item: Item; en
         </label>
         <span className="label">Picture</span>
         <div className="imgedit">
-          <div className="imgedit__view">{shown ? <img src={shown} alt="" /> : <span className="muted small">No picture</span>}</div>
+          <div className="imgedit__view">{shown ? <img src={shown} alt="" /> : item.pic ? <img src={itemPictureUrl(item.pic)} alt="" title="The picture made from the game model. Upload one to replace it." /> : <span className="muted small">No picture</span>}</div>
           <div className="imgedit__tools">
             <input type="file" accept="image/*" aria-label="Choose a picture" onChange={(e) => { setError(''); setFile(e.target.files?.[0] ?? null); }} />
             {file && <>
@@ -306,7 +314,7 @@ export default function Ledger() {
           {!current ? <p className="empty">Pick an item to see its tier, price and how to get it.</p> : (
             <>
               <div className="icard__view">
-                {cur?.image_path ? <img src={itemImageUrl(cur.image_path)} alt={current.name} /> : <span className="icard__ghost"><Glyph id={current.cat} size={120} /></span>}
+                <ItemPicture key={current.key} item={current} uploaded={cur?.image_path ?? null} />
               </div>
               <div className="icard">
                 <h2 className="icard__name">{current.name}</h2>

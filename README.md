@@ -16,11 +16,11 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | Black Tusk Oath | Fixed text, with the member's own name in it. |
 | Notice Board: announcements | Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster, Daedric. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
 | Notice Board: change log | Forgemaster only. |
-| Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags. Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
+| Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone (the card says so). Every card opens as members see it; an Edit button, shown only to those allowed, opens the form. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags, and can set another member's masteries (not their bio or hours). Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
 | Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
 | Mining Map | Any member pings an ore vein. Officers and Daedric approve or deny pings; their own markers go straight on the map. |
-| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. |
+| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. |
 
 Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag and keeps full access.
 
@@ -28,7 +28,8 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 
 - **App**: React and Vite, published as static files to GitHub Pages. `vite-plugin-pwa` makes it installable and lets the app shell open offline.
 - **Backend**: a free Supabase project. Supabase Auth holds the accounts; Postgres row level security enforces every permission in the table above; one Edge Function (`clan-api`) handles account management and reads the clan Discord's Server Widget.
-- **Game data**: `public/data` (about 10,000 items, their recipes and 402 map places) and `public/map` (the world map) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+- **Game data**: `public/data` (about 9,600 items, their recipes and 402 map places), `public/map` (the world map) and `public/items` (a picture of every item) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+- **Starting up**: a loading screen written into `index.html` covers the app until the fonts, the member's session and the first screen's pictures are all in (`src/lib/splash.ts`). The main menu, the map and the ledger are pinned to the edges of the screen and sized from their own box, so nothing sits off-screen on a phone.
 
 ## Setting up the backend (once)
 
@@ -59,7 +60,7 @@ Once, in the repository on GitHub: **Settings > Pages > Source: GitHub Actions**
 After that, every change to `main` is built and published by `.github/workflows/deploy.yml`. There are two ways to change `main`:
 
 - **With git**: push as usual.
-- **Without git**: on the repository page choose **Add file > Upload files**, drop in a zip of the whole project and commit. The workflow unpacks the zip over the repository, removes it, then builds and publishes. Small text fixes can also be made with the pencil icon on any file. The `.github` folder is never taken from a zip.
+- **Without git**: on the repository page choose **Add file > Upload files**, drop in a zip of the whole project and commit. The workflow unpacks the zip over the repository, removes it, then builds and publishes. Small text fixes can also be made with the pencil icon on any file. The `.github` folder is never taken from a zip. A zip without `public/map` or `public/items` keeps the map and pictures already in the repository, which keeps everyday zips to about 2 MB. Item pictures are uploaded on their own as `pictures-1.zip`, `pictures-2.zip` and so on; their `.webp` files are added to `public/items`.
 
 ## Day to day
 
@@ -84,8 +85,9 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 250 permission checks against real Postgres rules
-node tests/e2e.mjs       # 89 browser checks of every screen and role
+node tests/api.mjs       # 264 permission checks against real Postgres rules
+node tests/e2e.mjs       # 112 browser checks of every screen and role
+node tests/look_fit.mjs  # the main menu at 27 screen sizes: nothing off-screen, overlapping or scrolling
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```
 
@@ -110,9 +112,31 @@ python tools/build_tiles.py map_shaded.png map_geo.json public/map
 
 The extractors only read. Paths to the game folder are at the top of `extract_game_data.py`.
 
+Left out of the ledger at the clan's request (see `unwanted` in `build_catalog.py`): keys, every book except spell tomes and the Code of Malacath, and from Misc the clutter, dragon claws, untyped "Misc" items and every tool but the lockpick and linen wrap.
+
+### Item pictures
+
+Each picture is a still of the item's own game model, rendered in Blender with no background. On the game PC, with Blender 5.2 and the PyNifly add-on (reads Skyrim's `.nif` models) installed:
+
+```
+python tools/bt_probe.py  <out folder>                           # each item's model and texture swaps (also the enchantment survey)
+python tools/build_render_jobs.py public/data/items.json <out>/probe_items.json <jobs folder>
+python tools/bt_assets.py <jobs.json> <stage folder>             # copies the models and textures out of the game's archives (about 15 GB)
+python tools/bt_render_all.py <jobs.json> <stage folder> <renders folder>   # about half an hour on a mid-range graphics card
+```
+
+Then, anywhere with Python and Pillow:
+
+```
+python tools/pack_pictures.py <renders folder> public/items <jobs.json>      # 384px WebP, about 40 MB in all
+python tools/build_catalog.py <raw folder> public/data <out>/probe_items.json # ties each item to its picture
+```
+
+Items that share a model and textures share a picture, so about 9,600 items need about 2,650 pictures. A model with an inventory marker is shown from the angle the game's own inventory uses; one without is shown from the front, or from above if it lies flat. A handful of items have no model in the game files at all and keep the category mark instead.
+
 ## Credits
 
 - The Elder Scrolls V: Skyrim and its item names, map data and terrain belong to Bethesda Softworks.
 - Map textures come from **A Quality World Map** by IcePenguin, the map mod in the Daedric Online collection. Terrain shading and water are computed from the installed game's height data.
-- Item and recipe data includes content from the mods in the Daedric Online collection and from the server's own plugins.
+- Item and recipe data includes content from the mods in the Daedric Online collection and from the server's own plugins. Item pictures are renders of those games' and mods' own models and textures, read with **PyNifly** by BadDog.
 - Clan banner art and the Largashbur image were supplied by the clan. `tools/grade_background.py` colours the Largashbur picture to match the banner; `tools/clean_banner.py` tidies the banner cut-out.

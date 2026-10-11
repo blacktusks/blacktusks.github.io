@@ -192,9 +192,10 @@ void main(){
 }`;
 
 /** The clan banner. The cloth is moved by a small shader; the frame holds still. */
-export function Banner({ className = '' }: { className?: string }) {
+export function Banner({ className = '', onReady }: { className?: string; onReady?: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
+  const told = useRef(onReady); told.current = onReady;
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return;
     const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -221,7 +222,7 @@ export function Banner({ className = '' }: { className?: string }) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.uniform1i(gl.getUniformLocation(prog, name), unit);
-        if (++ready === 2) { canvas.classList.add('is-ready'); raf = requestAnimationFrame(draw); }
+        if (++ready === 2) { canvas.classList.add('is-ready'); raf = requestAnimationFrame(draw); told.current?.(); }
       };
       img.onerror = () => setFailed(true);
       img.src = src;
@@ -240,7 +241,7 @@ export function Banner({ className = '' }: { className?: string }) {
     load('./img/banner.webp', 0, 'tex'); load('./img/banner_weight.png', 1, 'mask');
     return () => { dead = true; cancelAnimationFrame(raf); };
   }, []);
-  if (failed) return <img className={`banner ${className}`} src="./img/banner.webp" alt="The Black Tusk banner" />;
+  if (failed) return <img className={`banner ${className}`} src="./img/banner.webp" alt="The Black Tusk banner" onLoad={() => onReady?.()} onError={() => onReady?.()} />;
   return <canvas ref={ref} className={`banner ${className}`} role="img" aria-label="The Black Tusk banner" />;
 }
 
@@ -254,7 +255,7 @@ export function Banner({ className = '' }: { className?: string }) {
  * The size comes from the scene's own box, which is right on phones even while
  * the browser's bars are sliding in and out.
  */
-export function Scene({ quiet = false }: { quiet?: boolean }) {
+export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(() => ({ w: window.innerWidth || document.documentElement.clientWidth, h: window.innerHeight || document.documentElement.clientHeight }));
   const [sharp, setSharp] = useState(false);
@@ -274,6 +275,8 @@ export function Scene({ quiet = false }: { quiet?: boolean }) {
     window.visualViewport?.addEventListener('resize', measure);
     return () => { ro?.disconnect(); events.forEach((e) => window.removeEventListener(e, measure)); window.visualViewport?.removeEventListener('resize', measure); };
   }, []);
+  const told = useRef(onReady); told.current = onReady;
+  useEffect(() => { if (sharp) told.current?.(); }, [sharp]);
   const f = fit(size.w, size.h);
   useFire(fire, flame, light, f);
   const place = { width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` };
@@ -281,7 +284,7 @@ export function Scene({ quiet = false }: { quiet?: boolean }) {
     <div ref={box} className={`scene ${quiet ? 'scene--quiet' : ''} ${sharp ? 'is-sharp' : ''}`} aria-hidden="true">
       <img className="scene__bg" src="./img/largashbur-dim.webp" alt="" draggable={false} style={place} />
       {!quiet && <img className="scene__bg scene__bg--sharp" src="./img/largashbur.webp" alt="" draggable={false} style={place}
-        onLoad={() => setSharp(true)} ref={(img) => { if (img?.complete && img.naturalWidth > 0) setSharp(true); }} />}
+        onLoad={() => setSharp(true)} onError={() => told.current?.()} ref={(img) => { if (img?.complete && img.naturalWidth > 0) setSharp(true); }} />}
       {!quiet && (
         <div className="scene__fireset">
           <div ref={light} className="scene__firelight" style={{ left: f.fx, top: f.fy, width: 760 * f.scale, height: 430 * f.scale }} />

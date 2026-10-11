@@ -292,6 +292,26 @@ console.log('member cards');
   ok((await velyn.from('profiles').select('bio').eq('id', ugak.me).single()).data.bio === 'Smith of Largashbur.', 'and it is unchanged');
   ok((await ugak.rpc('my_profile')).data.tags.join() === 'blooded', 'saving a card never touches tags');
   ok((await guest.rpc('update_my_card', { p_bio: 'x', p_masteries: [], p_timezone: null, p_availability: null })).error, 'guests cannot save a card');
+
+  // Officers may set another member's masteries (and nothing else on the card).
+  const set = await sharn.api('admin.update', { id: ugak.me, masteries: [{ skill: 'two_handed', level: 4 }, { skill: 'cook', level: 0 }] });
+  ok(set.data?.profile?.masteries?.length === 2 && set.data.profile.masteries[0].skill === 'two_handed' && set.data.profile.bio === 'Smith of Largashbur.',
+    "an officer sets another member's masteries; the bio stays as the member wrote it", set.error);
+  ok((await velyn.from('profiles').select('masteries').eq('id', ugak.me).single()).data.masteries[0].level === 4, 'and everyone sees the change');
+  ok((await ugak.api('admin.update', { id: velyn.me, masteries: [{ skill: 'cook', level: 5 }] })).error?.includes('officers'), "a Blooded member cannot set someone else's masteries");
+  ok((await sheo.api('admin.update', { id: ugak.me, masteries: [] })).error?.includes('officers'), 'nor can a Daedric member');
+  ok((await sharn.api('admin.update', { id: nick.me, masteries: [{ skill: 'cook', level: 5 }] })).error, "an officer cannot set a Forgemaster's masteries");
+  ok(!(await nick.api('admin.update', { id: gorza.me, masteries: [{ skill: 'armor', level: 5 }] })).error, "the Forgemaster can set the Chieftain's");
+  for (const [bad, why] of [[[{ skill: 'cook', level: 6 }], 'a level over 5'], [[{ skill: 'dragon_rider', level: 1 }], 'an unknown skill'],
+    [[{ skill: 'cook', level: 1 }, { skill: 'cook', level: 2 }], 'the same skill twice'], [[1, 2, 3, 4].map((n) => ({ skill: ['cook', 'miner', 'tailor', 'shield'][n - 1], level: 1 })), 'four masteries'], ['cook', 'something that is not a list']]) {
+    ok((await sharn.api('admin.update', { id: ugak.me, masteries: bad })).error, `an officer is refused ${why}`);
+  }
+  ok((await velyn.from('profiles').select('masteries').eq('id', ugak.me).single()).data.masteries.length === 2, 'refused changes leave the masteries as they were');
+  const untouched = await sharn.api('admin.update', { id: ugak.me, display_name: 'Ugak the Bold' });
+  ok(untouched.data?.profile?.masteries?.length === 2, 'editing a name leaves masteries alone', untouched.error);
+  const audit = await nick.from('audit_log').select('action, detail').eq('action', 'member.updated').order('at', { ascending: false }).limit(12);
+  ok((audit.data ?? []).some((a) => JSON.stringify(a.detail ?? {}).includes('two_handed')), 'the change is written to the audit log', JSON.stringify(audit.data ?? audit.error).slice(0, 200));
+  await card(ugak);
 }
 
 console.log('tag changes');

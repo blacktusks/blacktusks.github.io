@@ -81,6 +81,9 @@ function MarkerForm({ draft, places, herald, onChange, onCancel, onSaved }: {
   );
 }
 
+/** Width of the empty strip around the map picture, in its own pixels. */
+const EDGE = { left: 200, top: 72, right: 138, bottom: 198 };
+
 export default function MiningMap() {
   useTitle('Mining Map');
   const { profile } = useAuth(); const me = profile!; const herald = isHerald(me.tags);
@@ -124,8 +127,11 @@ export default function MiningMap() {
       const map = L.map(el.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: geo.max_zoom + 2, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
         attributionControl: false, zoomControl: false, maxBoundsViscosity: 1, bounceAtZoomLimits: false, inertia: true });
       mapRef.current = map;
-      const bounds = L.latLngBounds(map.unproject([0, geo.h], geo.max_zoom), map.unproject([geo.w, 0], geo.max_zoom));
-      L.tileLayer('./map/{z}/{x}_{y}.webp', { tileSize: 256, minZoom: 0, maxNativeZoom: geo.max_zoom, maxZoom: geo.max_zoom + 2, bounds, noWrap: true, keepBuffer: 3 }).addTo(map);
+      // The map picture has a flat blue strip around it where the game has no land or sea to draw.
+      // The view stops short of that strip, so the strip is never on screen.
+      const whole = L.latLngBounds(map.unproject([0, geo.h], geo.max_zoom), map.unproject([geo.w, 0], geo.max_zoom));
+      const bounds = L.latLngBounds(map.unproject([EDGE.left, geo.h - EDGE.bottom], geo.max_zoom), map.unproject([geo.w - EDGE.right, EDGE.top], geo.max_zoom));
+      L.tileLayer('./map/{z}/{x}_{y}.webp', { tileSize: 256, minZoom: 0, maxNativeZoom: geo.max_zoom, maxZoom: geo.max_zoom + 2, bounds: whole, noWrap: true, keepBuffer: 3 }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('Terrain: Skyrim, Bethesda. Map textures: A Quality World Map by IcePenguin').addTo(map);
       // The edges are locked: the map always covers the screen, so there is never
@@ -152,6 +158,12 @@ export default function MiningMap() {
         if (el.current) el.current.dataset.zoom = String(z);
       };
       map.on('zoomend', zoomClass); zoomClass();
+      // which part of the map picture is on screen, in its own pixels (the tests read this)
+      const noteView = () => {
+        const b = map.getBounds(), nw = map.project(b.getNorthWest(), geo.max_zoom), se = map.project(b.getSouthEast(), geo.max_zoom);
+        if (el.current) el.current.dataset.view = [nw.x, nw.y, se.x, se.y].map(Math.round).join(',');
+      };
+      map.on('moveend zoomend resize', noteView); noteView();
       setPlaces(pl.places); setMapReady(true);
     })();
     void load();

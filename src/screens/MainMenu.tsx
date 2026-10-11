@@ -4,6 +4,7 @@ import { APP_VERSION } from '../config';
 import { useAuth } from '../lib/auth';
 import { Banner, Scene } from '../components/Scene';
 import { Modal, Tags } from '../components/ui';
+import { splashHold, splashPass } from '../lib/splash';
 
 const MEMBER_MENU: [string, string][] = [
   ['Code of Mauloch', '/code'],
@@ -40,6 +41,8 @@ export default function MainMenu() {
   const nav = useRef<HTMLUListElement>(null);
   const [install, setInstall] = useState(false);
   useEffect(() => { document.title = 'Black Tusk Companion'; }, []);
+  // On the way in, the loading screen also waits for the picture behind the menu and for the banner.
+  useState(() => { splashHold('menu-scene'); splashHold('menu-banner'); return 0; });
 
   // Arrow keys move through the menu, as on the game's own title screen.
   const onKey = (e: React.KeyboardEvent) => {
@@ -56,20 +59,22 @@ export default function MainMenu() {
 
   return (
     <>
-      <Scene />
+      <Scene onReady={() => splashPass('menu-scene')} />
       <div className="menu">
-        <div className="menu__banner"><Banner /></div>
-        <ul className="menu__nav" ref={nav} onKeyDown={onKey} aria-label="Main menu">
-          {items.map(([label, act, quiet]) => (
-            <li key={label}><button className={`menu__item ${quiet ? 'menu__item--quiet' : ''}`} onClick={act}>{label}</button></li>
-          ))}
-        </ul>
-        <div className="menu__foot">
-          <div>
-            {profile && <div className="menu__who"><span>{profile.display_name}</span><Tags tags={profile.tags} /></div>}
-            <div>Black Tusk Companion {APP_VERSION}</div>
+        <div className="menu__banner"><Banner onReady={() => splashPass('menu-banner')} /></div>
+        <div className="menu__side">
+          <ul className="menu__nav" ref={nav} onKeyDown={onKey} aria-label="Main menu">
+            {items.map(([label, act, quiet]) => (
+              <li key={label}><button className={`menu__item ${quiet ? 'menu__item--quiet' : ''}`} onClick={act}>{label}</button></li>
+            ))}
+          </ul>
+          <div className="menu__foot">
+            <div>
+              {profile && <div className="menu__who"><span>{profile.display_name}</span><Tags tags={profile.tags} /></div>}
+              <div>Black Tusk Companion {APP_VERSION}</div>
+            </div>
+            {!standalone() && <button className="menu__install" onClick={() => setInstall(true)}>Add to home screen</button>}
           </div>
-          {!standalone() && <button className="menu__install" onClick={() => setInstall(true)}>Add to home screen</button>}
         </div>
       </div>
       {install && <InstallHelp onClose={() => setInstall(false)} />}

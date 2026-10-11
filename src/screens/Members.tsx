@@ -45,15 +45,17 @@ function TagPicker({ value, onChange, mine }: { value: string[]; onChange: (t: s
   );
 }
 
-/** What every member sees on another member's card. */
-function About({ member }: { member: Profile }) {
+/** The card as everyone sees it: masteries, bio and usual hours. */
+function About({ member, own }: { member: Profile; own: boolean }) {
   const masteries = cleanMasteries(member.masteries), week = cleanWeek(member.availability);
-  if (!masteries.length && !member.bio && !hoursFree(week)) return <p className="muted about__empty">Nothing on their card yet.</p>;
+  if (!masteries.length && !member.bio && !hoursFree(week)) {
+    return <p className="muted about__empty">{own ? 'Nothing on your card yet. Press Edit to add a bio, your masteries and the hours you are usually around.' : 'Nothing on their card yet.'}</p>;
+  }
   return (
     <div className="about">
       {masteries.length > 0 && <section><span className="label">Masteries</span><Masteries list={masteries} /></section>}
       {member.bio && <section><span className="label">Bio</span><p className="about__bio">{member.bio}</p></section>}
-      {hoursFree(week) > 0 && <section><span className="label">Usually around</span><AvailabilityStrip week={week} zone={member.timezone ?? null} /></section>}
+      {hoursFree(week) > 0 && <section><span className="label">Usually around</span><AvailabilityStrip week={week} zone={member.timezone ?? null} own={own} /></section>}
     </div>
   );
 }
@@ -153,6 +155,9 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
   const self = member.id === me.id;
   const officer = isOfficer(me.tags), smith = isForgemaster(me.tags);
   const canManage = officer && (smith || !member.tags.includes('forgemaster') || self);
+  const editable = self || canManage;
+  // Every card opens as members see it. Edit switches to the form.
+  const [editing, setEditing] = useState(false);
   const [display, setDisplay] = useState(member.display_name); const [discord, setDiscord] = useState(member.discord_name ?? '');
   const [username, setUsername] = useState(member.username ?? ''); const [tags, setTags] = useState(member.tags);
   const [bio, setBio] = useState(member.bio ?? ''); const [masteries, setMasteries] = useState<Mastery[]>(() => cleanMasteries(member.masteries));
@@ -167,17 +172,24 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
     setError(''); setBusy(true); setSaved(false);
     try { await fn(); } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
+  const startEditing = () => {
+    // start from what is saved now, not from an edit that was abandoned earlier
+    setDisplay(member.display_name); setDiscord(member.discord_name ?? ''); setUsername(member.username ?? ''); setTags(member.tags);
+    setBio(member.bio ?? ''); setMasteries(cleanMasteries(member.masteries)); setZone(member.timezone ?? deviceZone()); setWeek(cleanWeek(member.availability));
+    setError(''); setSaved(false); setEditing(true);
+  };
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     void run(async () => {
-      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}) });
+      // An officer sets another member's masteries with the rest of their profile; your own card saves itself below.
+      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}), ...(self ? {} : { masteries }) });
       else { const { error } = await supabase.rpc('update_my_profile', { p_display_name: display, p_discord_name: discord }); if (error) throw new Error(error.message); }
       if (self) {
         const { error } = await supabase.rpc('update_my_card', { p_bio: bio, p_masteries: masteries, p_timezone: zone || null, p_availability: hoursFree(week) ? week : null });
         if (error) throw new Error(/check constraint/.test(error.message) ? 'Your card was not saved: something in it is not allowed. Keep the bio to 500 characters.' : error.message);
         await reload();
       }
-      onChanged(); setSaved(true);
+      onChanged(); setSaved(true); setEditing(false);
     });
   };
 
@@ -192,56 +204,66 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
       </Confirm>
     );
   }
-  const editable = self || canManage;
+  const top = (
+    <div className="member__top">
+      <Tags tags={member.tags} />
+      {st.status !== 'unknown' && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}{st.game && st.status === 'discord' ? ` (${st.game})` : ''}</span>}
+    </div>
+  );
+  if (!editing) {
+    return (
+      <Modal title={member.display_name} onClose={onClose}>
+        {top}
+        <About member={member} own={self} />
+        {member.discord_name && <p className="muted" style={{ marginTop: 12 }}>Discord: {member.discord_name}</p>}
+        {saved && <p className="note" role="status">Saved.</p>}
+        <div className="row row--end" style={{ marginTop: 16 }}>
+          <button className="btn" onClick={onClose}>Close</button>
+          {editable && <button className="btn btn--go" onClick={startEditing}>Edit</button>}
+        </div>
+      </Modal>
+    );
+  }
   return (
-    <Modal title={member.display_name} onClose={onClose} wide={canManage || self}>
-      <div className="member__top">
-        <Tags tags={member.tags} />
-        {st.status !== 'unknown' && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}{st.game && st.status === 'discord' ? ` (${st.game})` : ''}</span>}
-      </div>
-      {!self && <About member={member} />}
-      {!editable ? (
-        <>
-          {member.discord_name && <p className="muted" style={{ marginTop: 12 }}>Discord: {member.discord_name}</p>}
-          <div className="row row--end" style={{ marginTop: 16 }}><button className="btn" onClick={onClose}>Close</button></div>
-        </>
-      ) : (
-        <form onSubmit={save} style={{ marginTop: 16 }}>
-          <label className="field"><span>Display name</span>
-            <input type="text" value={display} onChange={(e) => setDisplay(e.target.value)} maxLength={40} required />
+    <Modal title={`Editing ${member.display_name}`} onClose={onClose} wide>
+      {top}
+      <form onSubmit={save} style={{ marginTop: 16 }}>
+        <label className="field"><span>Display name</span>
+          <input type="text" value={display} onChange={(e) => setDisplay(e.target.value)} maxLength={40} required />
+        </label>
+        <label className="field"><span>Discord name</span>
+          <input type="text" value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={64} />
+          <small>As it shows in the clan Discord's member list. This is how the Members screen knows who is online.</small>
+        </label>
+        {self && (
+          <label className="field"><span>Bio</span>
+            <textarea value={bio} onChange={(e) => setBio(e.target.value.slice(0, 500))} maxLength={500} rows={4} placeholder="Who is your character? What do you do for the clan?" />
+            <small className={bio.length >= 480 ? 'is-near' : ''}>{bio.length} of 500 characters</small>
           </label>
-          <label className="field"><span>Discord name</span>
-            <input type="text" value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={64} />
-            <small>As it shows in the clan Discord's member list. This is how the Members screen knows who is online.</small>
+        )}
+        {(self || canManage) && <>
+          <span className="label">Masteries</span>
+          <MasteryPicker value={masteries} onChange={setMasteries} />
+          {!self && <p className="hint">As an officer you can set {member.display_name}'s masteries. Their bio and hours are theirs to write.</p>}
+        </>}
+        {self && <AvailabilityEditor week={week} zone={zone} onWeek={setWeek} onZone={setZone} />}
+        {canManage && <>
+          <label className="field"><span>Sign-in name</span>
+            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!smith} autoCapitalize="none" spellCheck={false} />
+            {!smith && <small>Only a Forgemaster can change a sign-in name.</small>}
           </label>
-          {self && <>
-            <label className="field"><span>Bio</span>
-              <textarea value={bio} onChange={(e) => setBio(e.target.value.slice(0, 500))} maxLength={500} rows={4} placeholder="Who is your character? What do you do for the clan?" />
-              <small className={bio.length >= 480 ? 'is-near' : ''}>{bio.length} of 500 characters</small>
-            </label>
-            <span className="label">Masteries</span>
-            <MasteryPicker value={masteries} onChange={setMasteries} />
-            <AvailabilityEditor week={week} zone={zone} onWeek={setWeek} onZone={setZone} />
-          </>}
-          {canManage && <>
-            <label className="field"><span>Sign-in name</span>
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!smith} autoCapitalize="none" spellCheck={false} />
-              {!smith && <small>Only a Forgemaster can change a sign-in name.</small>}
-            </label>
-            <span className="label">Tags</span>
-            <TagPicker value={tags} onChange={setTags} mine={me.tags} />
-          </>}
-          {error && <p className="error" role="alert">{error}</p>}
-          {saved && <p className="note" role="status">Saved.</p>}
-          <div className="row" style={{ marginTop: 16 }}>
-            {self && <button type="button" className="btn" onClick={() => setChanging(true)}>Change password</button>}
-            {canManage && !self && <button type="button" className="btn btn--danger" onClick={() => setRemoving(true)}>Remove member</button>}
-            <span style={{ flex: 1 }} />
-            <button type="button" className="btn" onClick={onClose}>Close</button>
-            <button className="btn btn--go" disabled={busy}>Save</button>
-          </div>
-        </form>
-      )}
+          <span className="label">Tags</span>
+          <TagPicker value={tags} onChange={setTags} mine={me.tags} />
+        </>}
+        {error && <p className="error" role="alert">{error}</p>}
+        <div className="row" style={{ marginTop: 16 }}>
+          {self && <button type="button" className="btn" onClick={() => setChanging(true)}>Change password</button>}
+          {canManage && !self && <button type="button" className="btn btn--danger" onClick={() => setRemoving(true)}>Remove member</button>}
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn" onClick={() => { setError(''); setEditing(false); }}>Cancel</button>
+          <button className="btn btn--go" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </form>
       {smith && (
         <section className="vault">
           <span className="label">Password (Forgemaster only)</span>

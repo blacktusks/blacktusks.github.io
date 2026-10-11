@@ -2,10 +2,11 @@ import { useMemo, useRef } from 'react';
 import { DAYS, PRESETS, allZones, deviceZone, emptyWeek, hourLabel, hoursFree, isFree, mergeWeek, setFree, shiftWeek, zoneName, type Week } from '../lib/availability';
 
 /** A member's week as others see it: one thin row per day, converted to the viewer's own clock. */
-export function AvailabilityStrip({ week, zone }: { week: Week; zone: string | null }) {
+export function AvailabilityStrip({ week, zone, own }: { week: Week; zone: string | null; own?: boolean }) {
   const mine = deviceZone();
   const shown = useMemo(() => (zone ? shiftWeek(week, zone, mine) : week), [week, zone, mine]);
   if (!hoursFree(week)) return null;
+  const whose = own ? 'Your card says' : 'Their time zone is';
   return (
     <div className="avail">
       <div className="avail__grid" role="img" aria-label={`Usually free ${hoursFree(week)} hours a week`}>
@@ -17,7 +18,14 @@ export function AvailabilityStrip({ week, zone }: { week: Week; zone: string | n
           </div>
         ))}
       </div>
-      <p className="hint">{zone && zone !== mine ? `Shown in your time. Their own time zone is ${zoneName(zone)}.` : zone ? `Time zone: ${zoneName(zone)}.` : 'No time zone given, so these are their local hours.'}</p>
+      {zone ? (
+        <p className="avail__zone">
+          <strong>These hours are shown in your time.</strong> They are converted automatically to the clock on this device, {zoneName(mine)}.
+          {' '}{zone === mine ? `${whose} the same zone.` : `${whose} ${zoneName(zone)}.`}
+        </p>
+      ) : (
+        <p className="avail__zone"><strong>These hours are not converted.</strong> No time zone is set on this card, so they are shown as written.</p>
+      )}
     </div>
   );
 }

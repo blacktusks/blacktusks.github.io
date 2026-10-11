@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Turn the raw game dump (tools/extract_game_data.py) into the app's item
-catalog and map places.  Usage: build_catalog.py <raw_dir> <public/data dir>"""
+catalog and map places.  Usage: build_catalog.py <raw_dir> <public/data dir> [probe_items.json]"""
 import json, re, sys, os, collections
 
 RAW, OUT = sys.argv[1], sys.argv[2]
+# Optional: the model dump from tools/bt_probe.py. With it, each item is tied to
+# its picture in public/items (made by tools/pack_pictures.py), where one exists.
+PROBE = sys.argv[3] if len(sys.argv) > 3 else None
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from picture_keys import picture
 load = lambda n: json.load(open(os.path.join(RAW, n), encoding="utf-8"))
 items = load("raw_items.json"); recipes = load("raw_recipes.json"); flora = load("raw_flora.json")
 refs = load("raw_refs.json")["refs"]; plugins = load("raw_plugins.json"); mk = load("raw_markers.json")
@@ -291,16 +296,39 @@ def dump(name, obj):
     json.dump(obj, open(p, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print("wrote %-14s %7.1f KB" % (name, os.path.getsize(p) / 1024))
 
-# Left out at the clan's request: keys (nobody trades them), and every book
-# except spell tomes and the Code of Malacath.
+# Left out at the clan's request: keys (nobody trades them), every book except
+# spell tomes and the Code of Malacath, and the odds and ends of the Misc
+# section: clutter, dragon claws, untyped "Misc" items, and every tool but the
+# lockpick and the linen wrap. "Do Not Delete" is a hidden quest helper from
+# Skyrim itself (it carries the value of Barenziah's crown) and was never an item.
 KEEP_BOOKS = {"The Code of Malacath"}
+KEEP_TOOLS = {"Lockpick", "Linen Wrap"}
+DROP_MISC_TYPES = {"Clutter", "Dragon Claw", "Misc"}
 def unwanted(r):
-    return r[2] == "keys" or (r[2] == "books" and r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS)
+    if r[2] == "keys": return True
+    if r[2] == "books": return r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS
+    if r[2] == "misc":
+        return r[3] in DROP_MISC_TYPES or (r[3] == "Tool" and r[1] not in KEEP_TOOLS) or r[1] == "Do Not Delete"
+    return False
 dropped = {r[0] for r in out_items if unwanted(r)}
 out_items = [r for r in out_items if not unwanted(r)]
 for k in dropped: details.pop(k, None)
 out_items.sort(key=lambda r: (r[2], r[1].lower()))
-dump("items.json", {"v": 1, "sources": src_list, "cols": ["key", "name", "cat", "type", "cls", "value", "weight", "stat", "src", "flags"], "items": out_items})
+# Pictures: the last column points into "pics", or is -1 where there is none.
+pics = []; pic_idx = {}
+have = set()
+pic_dir = os.path.join(os.path.dirname(os.path.abspath(OUT)), "items")
+if os.path.isdir(pic_dir): have = {f[:-5] for f in os.listdir(pic_dir) if f.endswith(".webp")}
+probe = json.load(open(PROBE, encoding="utf-8")) if PROBE else {}
+for r in out_items:
+    it = probe.get(r[0]); p = picture(it) if it else None
+    key = p[0] if p and p[0] in have else None
+    if key is None: r.append(-1); continue
+    if key not in pic_idx: pic_idx[key] = len(pics); pics.append(key)
+    r.append(pic_idx[key])
+dump("items.json", {"v": 2, "sources": src_list, "pics": pics,
+                    "cols": ["key", "name", "cat", "type", "cls", "value", "weight", "stat", "src", "flags", "pic"], "items": out_items})
+print("pictures:", len(pics), "for", sum(1 for r in out_items if r[10] >= 0), "items;", sum(1 for r in out_items if r[10] < 0), "items without one")
 dump("details.json", details)
 
 # ---------------------------------------------------------------- places

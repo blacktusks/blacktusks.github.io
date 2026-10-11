@@ -66,18 +66,27 @@ img { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { .scene__smoke i { animation: none; } }
 
 /* ── main menu ── */
-.menu { position: relative; z-index: 1; height: 100dvh; overflow: hidden; }
+/* The menu is pinned to the edges of the screen and never scrolls. Everything in it is
+   sized from the menu's own box (--mh and --mw are 1% of its height and width), not from
+   the browser's idea of the screen, which on phones changes as its bars slide in and out.
+   Nothing can then sit off-screen waiting for a swipe to bring it back. */
+.menu { position: fixed; inset: 0; z-index: 1; overflow: hidden; display: flex; --mh: 1vh; --mw: 1vw; }
+@supports (height: 1dvh) { .menu { --mh: 1dvh; --mw: 1dvw; } }
+@supports (container-type: size) { .menu { container-type: size; --mh: 1cqh; --mw: 1cqw; } }
 .banner { display: block; width: 100%; aspect-ratio: 1; filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); }
 canvas.banner { opacity: 0; transition: opacity 0.9s ease; }
 canvas.banner.is-ready { opacity: 1; }
-.menu__banner { position: absolute; left: clamp(8px, 3.5vw, 70px); bottom: -1.5vh; width: min(88vh, 47vw); pointer-events: none; }
-.menu__nav {
-  position: absolute; right: max(clamp(22px, 7vw, 120px), env(safe-area-inset-right)); top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; align-items: flex-end; gap: clamp(2px, 0.9vh, 10px); margin: 0; padding: 0; list-style: none;
+.menu__banner { flex: 0 0 auto; align-self: flex-end; width: min(calc(var(--mh) * 88), calc(var(--mw) * 47)); margin-left: clamp(8px, calc(var(--mw) * 3.5), 70px); margin-bottom: calc(var(--mh) * -1.5); pointer-events: none; }
+/* The right-hand column: the list sits in the middle of the screen, the small print at the foot.
+   When the screen is too short for both, the list moves up rather than under the small print. */
+.menu__side {
+  flex: 1 1 auto; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 1fr); justify-items: end;
+  padding: calc(var(--safe-t) + 8px) max(clamp(22px, calc(var(--mw) * 7), 120px), env(safe-area-inset-right)) calc(12px + var(--safe-b)) 0;
 }
+.menu__nav { grid-row: 2; display: flex; flex-direction: column; align-items: flex-end; gap: clamp(2px, calc(var(--mh) * 0.9), 10px); margin: 0; padding: 0; list-style: none; }
 .menu__item {
   appearance: none; background: none; border: 0; padding: 0.28em 0 0.28em 1.6em; cursor: pointer; text-decoration: none; display: block;
-  font: 300 clamp(21px, 3.5vh, 34px)/1.1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; text-align: right;
+  font: 300 clamp(15px, calc(var(--mh) * 3.5), 34px)/1.1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; text-align: right; white-space: nowrap;
   color: var(--bone-2); text-shadow: 0 2px 10px #000, 0 0 2px #000; position: relative; transition: color 0.18s, text-shadow 0.18s;
   -webkit-tap-highlight-color: transparent;
 }
@@ -87,32 +96,41 @@ canvas.banner.is-ready { opacity: 1; }
 }
 .menu__item:hover, .menu__item:focus-visible, .menu__item.is-on { color: #fff; text-shadow: 0 0 18px rgba(255, 190, 120, 0.55), 0 2px 10px #000; outline: none; }
 .menu__item:hover::before, .menu__item:focus-visible::before, .menu__item.is-on::before { transform: scaleX(1); }
-.menu__item--quiet { font-size: clamp(16px, 2.5vh, 24px); margin-bottom: 0.5em; color: var(--bone-3); }
+.menu__item--quiet { font-size: clamp(13px, calc(var(--mh) * 2.5), 24px); margin-bottom: 0.5em; color: var(--bone-3); }
 .menu__foot {
-  position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: calc(12px + var(--safe-b)); right: 18px;
-  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; pointer-events: none;
+  grid-row: 3; align-self: end; display: flex; flex-direction: column-reverse; align-items: flex-end; text-align: right; gap: 6px; padding-top: 8px;
   font: 300 13px/1.3 var(--ui); letter-spacing: 0.08em; color: var(--bone-3); text-shadow: 0 1px 4px #000;
 }
-.menu__foot > * { pointer-events: auto; }
-.menu__who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--bone-2); max-width: 46vw; }
-@media (orientation: landscape) and (min-aspect-ratio: 21/20) {
-  .menu__foot { left: auto; flex-direction: column-reverse; align-items: flex-end; text-align: right; gap: 6px; right: max(clamp(22px, 7vw, 120px), env(safe-area-inset-right)); }
-  .menu__who { justify-content: flex-end; }
-}
+.menu__who { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 8px; font-size: 14px; color: var(--bone-2); max-width: calc(var(--mw) * 46); }
 .menu__install { background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--bone-2); font: inherit; letter-spacing: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
+/* Tall screens (phones held upright): the banner takes whatever room the list leaves, above it. */
 @media (orientation: portrait), (max-aspect-ratio: 21/20) {
-  .menu__banner { left: 50%; bottom: auto; top: calc(var(--safe-t) + 0.5vh); width: min(86vw, 42vh); transform: translateX(-50%); }
-  .menu__nav { top: auto; transform: none; bottom: calc(58px + var(--safe-b)); right: max(7vw, 22px); gap: 0.2vh; }
-  .menu__item { font-size: clamp(18px, 2.75vh, 27px); padding-top: 0.24em; padding-bottom: 0.24em; }
-  .menu__item--quiet { font-size: clamp(14px, 2.1vh, 20px); margin-bottom: 0.2em; }
-  .menu__who { max-width: 58vw; }
+  .menu { flex-direction: column; }
+  .menu__banner { flex: 1 1 0; min-height: 0; align-self: stretch; width: auto; margin: calc(var(--safe-t) + var(--mh) * 0.5) 0 0; display: grid; place-items: center; }
+  .menu__banner .banner { width: min(calc(var(--mw) * 86), calc(var(--mh) * 42)); }
+  .menu__side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; padding: 6px 18px calc(12px + var(--safe-b)) max(18px, env(safe-area-inset-left)); }
+  .menu__nav { gap: calc(var(--mh) * 0.2); margin-right: max(calc(var(--mw) * 7 - 18px), 4px); }
+  .menu__item { font-size: clamp(15px, calc(var(--mh) * 2.75), 27px); padding-top: 0.24em; padding-bottom: 0.24em; }
+  .menu__item--quiet { font-size: clamp(13px, calc(var(--mh) * 2.1), 20px); margin-bottom: 0.2em; }
+  .menu__foot { align-self: stretch; flex-direction: row; align-items: flex-end; justify-content: space-between; text-align: left; gap: 12px; padding-top: 10px; }
+  .menu__who { justify-content: flex-start; max-width: calc(var(--mw) * 58); }
 }
-@media (orientation: portrait) and (max-height: 700px) { .menu__banner { width: min(78vw, 36vh); } .menu__item { font-size: 18px; } }
+/* Where the browser can measure the banner's own box, it fills that box exactly. */
+@supports (container-type: size) {
+  @media (orientation: portrait), (max-aspect-ratio: 21/20) {
+    .menu__banner { container-type: size; }
+    .menu__banner .banner { width: min(86cqw, 100cqh); }
+  }
+}
+/* Short and wide (phones on their side): a tighter list, and the install link gives up its line. */
 @media (orientation: landscape) and (max-height: 520px) {
-  .menu__item { font-size: clamp(15px, 5.4vh, 22px); padding-top: 0.14em; padding-bottom: 0.14em; }
+  .menu__item { font-size: clamp(14px, calc(var(--mh) * 5.4), 22px); padding-top: 0.14em; padding-bottom: 0.14em; }
+  .menu__item--quiet { font-size: clamp(12px, calc(var(--mh) * 4), 18px); margin-bottom: 0.25em; }
   .menu__nav { gap: 0; }
+  .menu__foot { gap: 2px; padding-top: 4px; }
 }
+@media (orientation: landscape) and (max-height: 360px) { .menu__install { display: none; } .menu__who { font-size: 12px; } }
 
 /* ── tags ── */
 .tag {

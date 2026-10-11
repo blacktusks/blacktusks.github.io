@@ -100,14 +100,15 @@
 .resedit__row { display: grid; grid-template-columns: minmax(0, 2fr) 90px minmax(0, 1fr) minmax(0, 1.4fr) auto auto; gap: 6px; align-items: center; }
 @media (max-width: 640px) { .resedit__row { grid-template-columns: 1fr 90px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); } }
 /* ── mining map ── */
-.mapscreen { height: 100dvh; min-height: 0; }
+/* Pinned to the screen's edges, like the main menu, so the map always has exactly the room that is left. */
+.mapscreen { position: fixed; inset: 0; min-height: 0; }
 .mapscreen__head { padding-top: calc(var(--safe-t) + 10px); }
 .mapscreen__head .page__title { font-size: clamp(20px, 3.4vw, 30px); }
 .mapwrap { position: relative; flex: 1; min-height: 0; margin-top: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.map { position: absolute; inset: 0; background: #06090c; font: inherit; outline: none; }
+.map { position: absolute; inset: 0; background: #000; font: inherit; outline: none; }
 .map.is-placing { cursor: crosshair; }
 .mapscreen__bar { position: static; background: #000; }
-.mapwrap .map.leaflet-container { background: #06090c; font-family: var(--ui); }
+.mapwrap .map.leaflet-container { background: #000; font-family: var(--ui); }
 .leaflet-bar { border: 1px solid var(--line) !important; border-radius: 0 !important; box-shadow: none !important; }
 .leaflet-bar a { background: rgba(0, 0, 0, 0.78) !important; color: var(--bone) !important; border-bottom-color: var(--line-2) !important; width: 38px !important; height: 38px !important; line-height: 36px !important; font-size: 22px !important; border-radius: 0 !important; }
 .leaflet-bar a:hover { background: rgba(40, 30, 24, 0.95) !important; color: #fff !important; }
@@ -171,7 +172,7 @@
   .mapkey { left: 8px; top: 8px; width: 214px; }
 }
 /* ── pricing ledger: the SkyUI inventory layout ── */
-.ledger { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 57fr) minmax(0, 43fr); grid-template-rows: minmax(0, 1fr) auto; padding-top: var(--safe-t); }
+.ledger { position: fixed; inset: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 57fr) minmax(0, 43fr); grid-template-rows: minmax(0, 1fr) auto; padding-top: var(--safe-t); }
 .ledger__list { display: flex; flex-direction: column; min-height: 0; margin-left: clamp(0px, 3vw, 54px); background: rgba(0, 0, 0, 0.66); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 .lcats { display: flex; justify-content: center; gap: clamp(0px, 0.6vw, 8px); padding: 10px 8px 0; border-bottom: 1px solid var(--line); }
 .lcats__one { position: relative; width: 44px; height: 46px; display: grid; place-items: center; border: 0; background: none; color: var(--bone-3); cursor: pointer; transition: color 0.15s; flex: 0 1 auto; min-width: 30px; }
@@ -207,8 +208,10 @@
 .lrow.is-hidden .lc-name { text-decoration: line-through; opacity: 0.55; }
 
 .ledger__card { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: clamp(10px, 2.4vh, 26px) clamp(12px, 2.6vw, 40px) 16px; }
-.icard__view { flex: 0 0 auto; width: 100%; height: clamp(150px, 34vh, 340px); display: grid; place-items: center; }
-.icard__view img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.75)); }
+.icard__view { flex: 0 0 auto; width: 100%; height: clamp(150px, 36vh, 360px); display: flex; align-items: center; justify-content: center; }
+.icard__view img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; min-height: 0; object-fit: contain; filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.75)); }
+/* pictures made from the game's own models come on a square with air round them, so they may use the whole box */
+.icard__view img.is-render { height: 100%; filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.7)); }
 .icard__ghost { color: rgba(236, 227, 207, 0.1); }
 .icard { width: min(520px, 100%); padding: 16px 20px 18px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.72); }
 .icard__name { display: flex; align-items: center; gap: 12px; justify-content: center; text-align: center; font: 300 clamp(21px, 2.3vw, 27px)/1.15 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: #fff; }
@@ -331,3 +334,6 @@
 .availedit__grid button:focus-visible { outline: 2px solid #fff; outline-offset: 0; position: relative; z-index: 1; }
 .availedit__row:nth-of-type(6n) button { margin-bottom: 3px; }
 .roster__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* The note under someone's hours: whose clock they are shown on. */
+.avail__zone { margin: 10px 0 0; padding: 7px 10px; border-left: 2px solid var(--ember); background: rgba(224, 82, 44, 0.08); font-size: 15px; line-height: 1.4; color: var(--bone-2); max-width: 560px; }
+.avail__zone strong { color: var(--bone); font-weight: 500; }
