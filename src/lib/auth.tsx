@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { LOGIN_EMAIL_DOMAIN } from '../config';
-import { supabase } from './supabase';
+import { stay, supabase } from './supabase';
 import type { Profile } from './types';
 
 interface AuthState {
   ready: boolean;
   profile: Profile | null;
-  signIn: (username: string, password: string) => Promise<void>;
+  signIn: (username: string, password: string, staySignedIn?: boolean) => Promise<void>;
+  /** After a member changes their own password: Supabase ends every session, so start a new one. */
+  renew: (newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -40,8 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthState>(() => ({
     ready, profile,
-    async signIn(username, password) {
-      const name = username.trim().toLowerCase();
+    async signIn(username, password, staySignedIn = true) {
+      const name = username.trim().toLowerCase();                 // "Grug" and "grug" are the same member
+      stay.set(staySignedIn);                                     // decided before the session is stored
       const { data, error } = await supabase.auth.signInWithPassword({ email: `${name}@${LOGIN_EMAIL_DOMAIN}`, password });
       if (error) {
         throw new Error(/invalid/i.test(error.message)
@@ -50,7 +53,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       await load(data.user?.id);
     },
-    async signOut() { await supabase.auth.signOut(); setProfile(null); },
+    async renew(newPassword) {
+      const email = (await supabase.auth.getSession()).data.session?.user.email;
+      const { data, error } = email
+        ? await supabase.auth.signInWithPassword({ email, password: newPassword })
+        : { data: null, error: new Error('no session') };
+      if (error) { await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined); setProfile(null); return; }
+      await load(data?.user?.id);
+    },
+    // "local": signing out here leaves the member's other devices signed in.
+    async signOut() { await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined); setProfile(null); },
     async reload() { const { data } = await supabase.auth.getSession(); await load(data.session?.user.id); },
   }), [ready, profile, load]);
 

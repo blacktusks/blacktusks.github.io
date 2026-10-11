@@ -240,7 +240,7 @@ export default function MiningMap() {
                   </label></li>
                 ))}
               </ul>
-              <label className="check small" style={{ padding: '2px 12px' }}><input type="checkbox" checked={showPlaces} onChange={(e) => setShowPlaces(e.target.checked)} />Place names</label>
+              <label className="check small" style={{ padding: '2px 12px' }}><input type="checkbox" checked={showPlaces} onChange={(e) => setShowPlaces(e.target.checked)} />Locations</label>
               {(pending.length > 0) && (
                 <div className="mapkey__pending">
                   <span className="label">{herald ? `Waiting for approval (${pending.length})` : `Your pings waiting (${pending.length})`}</span>

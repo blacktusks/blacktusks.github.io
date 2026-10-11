@@ -28,14 +28,14 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 
 - **App**: React and Vite, published as static files to GitHub Pages. `vite-plugin-pwa` makes it installable and lets the app shell open offline.
 - **Backend**: a free Supabase project. Supabase Auth holds the accounts; Postgres row level security enforces every permission in the table above; one Edge Function (`clan-api`) handles account management and reads the clan Discord's Server Widget.
-- **Game data**: `public/data` (11,900 items, their recipes and 392 map places) and `public/map` (the world map) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+- **Game data**: `public/data` (about 10,000 items, their recipes and 402 map places) and `public/map` (the world map) are built from the game files of a Daedric Online install by the scripts in `tools/`.
 
 ## Setting up the backend (once)
 
 Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
 
 1. Create a project at supabase.com (free plan).
-2. **SQL Editor**: paste `supabase/migrations/0001_black_tusk.sql` and run it.
+2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...`, then `0002_...`). They are safe to re-run.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
 4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
 5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
@@ -43,14 +43,14 @@ Use a Supabase project made for this app alone: the migration takes away the def
 
    ```sql
    insert into public.profiles (id, username, display_name, tags, must_change_password)
-   select id, 'yourname', 'Your Name', array['right_tusk', 'forgemaster'], true
+   select id, 'YourName', 'Your Name', array['right_tusk', 'forgemaster'], true
    from auth.users where email = 'yourname@blacktusk.invalid';
    ```
 
    The first sign-in asks for a new password, which also starts the saved copy for that account. Every other account is made inside the app from the Members screen.
 7. `.env.production` holds the project URL and the **publishable** key (`sb_publishable_...`, from **Project Settings > API Keys**). Both are safe to commit: access is decided by the database rules, not by hiding the key. Use the publishable key rather than the legacy `anon` key, which Supabase is retiring.
 
-Members sign in with a name. Behind the scenes Supabase sees `name@blacktusk.invalid`. `.invalid` is a reserved ending that can never receive mail, so nobody can trigger a password-reset email for a member. If Supabase ever refuses that ending, set `LOGIN_EMAIL_DOMAIN` (function secret) and `VITE_LOGIN_EMAIL_DOMAIN` (`.env.production`) to a domain you own.
+Members sign in with a name. It keeps the capitals it was given (`Grug`), but capitals never matter when signing in. Behind the scenes Supabase sees the lower-case `name@blacktusk.invalid`. `.invalid` is a reserved ending that can never receive mail, so nobody can trigger a password-reset email for a member. If Supabase ever refuses that ending, set `LOGIN_EMAIL_DOMAIN` (function secret) and `VITE_LOGIN_EMAIL_DOMAIN` (`.env.production`) to a domain you own.
 
 ## Publishing
 
@@ -64,7 +64,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 ## Day to day
 
 - **Add a member**: Members > Add member. The app shows a temporary password once; the member must choose their own at first sign-in.
-- **Forgotten password**: the Forgemaster opens the member in Members and uses Show current password or Set password. Every view is written to the audit log (`audit_log` table).
+- **Forgotten password**: the Forgemaster opens the member in Members and uses Show current password or Set password. Every view is written to the audit log (`audit_log` table). Setting a password signs that member out on every device.
+- **Staying signed in**: with "Stay signed in" ticked on the sign-in screen, a device remembers the member until they sign out. Unticked, they are signed out when the app or tab is closed. Changing a password signs the member out everywhere else.
 - **Online status**: Members > Discord link (Forgemaster). Turn on the Server Widget in the clan Discord, paste the Server ID, and put each member's Discord name on their profile. "In the realm" means Discord shows them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim.
 - **Install on a phone**: iPhone: open in Safari, Share, Add to Home Screen. Android: open in Chrome, menu, Install app.
 
@@ -82,8 +83,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 141 permission checks against real Postgres rules
-node tests/e2e.mjs       # 68 browser checks of every screen and role
+node tests/api.mjs       # 232 permission checks against real Postgres rules
+node tests/e2e.mjs       # 75 browser checks of every screen and role
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```
 

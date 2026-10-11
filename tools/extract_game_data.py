@@ -433,6 +433,10 @@ def main():
 
 
 TAMRIEL = "skyrim.esm:00003C"
+# The five walled cities are worldspaces of their own that share Tamriel's
+# coordinates. Their map markers (Whiterun, Solitude...) live inside them.
+CITY_WORLDS = {"skyrim.esm:01A26F": "Whiterun", "skyrim.esm:037EDF": "Solitude", "skyrim.esm:016BB4": "Riften",
+               "skyrim.esm:01691D": "Windhelm", "skyrim.esm:016D71": "Markarth"}
 
 
 def walk_world(p, markers, world):
@@ -443,8 +447,11 @@ def walk_world(p, markers, world):
     while pos + 24 <= end:
         typ, size, label, gtype = struct.unpack_from("<4sIII", mm, pos)
         if typ == b"GRUP":
-            if gtype == 1 and p.gid(label) == TAMRIEL:
+            if gtype == 1 and (p.gid(label) == TAMRIEL or p.gid(label) in CITY_WORLDS):
+                before = set(markers)
                 found += walk_children(p, pos + 24, pos + size, markers)
+                if p.gid(label) in CITY_WORLDS:
+                    for g in set(markers) - before: markers[g]["world"] = CITY_WORLDS[p.gid(label)]
             pos += size
         else:
             flags, fid = label, gtype

@@ -136,7 +136,7 @@
 .map.is-far .place--major span { display: none; }
 .map.is-far .place--major i { width: 4px; height: 4px; left: -2px; top: -2px; opacity: 0.7; }
 .map.is-far .place--city span { font-size: 13px; }
-.map.is-tiny .place--city span { display: none; }
+.map.is-tiny .place--city span { font-size: 11px; letter-spacing: 0.04em; }
 .map.is-tiny .place--major { display: none; }
 
 .mapkey { position: absolute; z-index: 500; left: 12px; top: 12px; width: 232px; max-height: calc(100% - 24px); overflow-y: auto; border: 1px solid var(--line); background: rgba(6, 5, 4, 0.93); padding-bottom: 8px; }

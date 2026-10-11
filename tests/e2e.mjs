@@ -57,8 +57,26 @@ ok((await durak.textContent('.modal')).includes('Choose your own password'), 'fi
 ok((await durak.textContent('.modal')).includes('Forgemaster can read this password'), 'the member is told the Forgemaster can read it');
 await durak.getByLabel('Temporary password').fill(temp); await durak.getByLabel('New password', { exact: true }).fill('DurakOwnPass77'); await durak.getByLabel('New password again').fill('DurakOwnPass77');
 await durak.getByRole('button', { name: 'Save password' }).click(); await durak.getByRole('button', { name: 'Continue' }).click();
-await durak.waitForTimeout(600); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 9, 'after changing it the member is in');
+await durak.waitForTimeout(900); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 9, 'after changing it the member is in');
+// Supabase ends every session on a password change. The app must have signed this one back in,
+// or the next thing that needs the server (the Members screen asks it who is online) would fail.
+await go(durak, '/members', 1200);
+ok((await durak.locator('.roster__row').count()) === 7 && !durak.url().includes('sign-in'), 'and stays signed in: the server still knows them after the change');
+ok(await durak.evaluate(() => !!localStorage.getItem('black-tusk-session') && !sessionStorage.getItem('black-tusk-session')), 'Stay signed in keeps the session on the device');
 await durak.context().close();
+{
+  // Unticked: the session lives only as long as the tab.
+  const once = await t.open(); await once.goto(t.base + '#/sign-in');
+  ok(await once.getByLabel('Stay signed in').isChecked(), 'Stay signed in is offered on the sign-in screen, ticked');
+  await once.getByLabel('Stay signed in').uncheck();
+  await once.getByLabel('Name').fill('UGAK'); await once.getByLabel('Password').fill('TestPass123'); await once.getByRole('button', { name: 'Sign in' }).click();
+  await once.waitForSelector('.menu__nav');
+  ok((await menu(once)).length === 9, 'a name typed in capitals signs in');
+  ok(await once.evaluate(() => !localStorage.getItem('black-tusk-session') && !!sessionStorage.getItem('black-tusk-session')), 'unticked, nothing is left on the device after the tab closes');
+  const again = await once.context().newPage(); await again.goto(t.base); await again.waitForTimeout(900);
+  ok((await menu(again)).length === 2, 'a new tab starts signed out');
+  await once.context().close();
+}
 
 await nick.getByText('Durak Iron-Jaw').click(); await nick.getByRole('button', { name: 'Show current password' }).click(); await nick.waitForSelector('.secret__value');
 ok((await nick.locator('.secret__value').textContent()) === 'DurakOwnPass77', 'Forgemaster can view the member\'s current password');
@@ -161,7 +179,8 @@ ok((await velyn.locator('.ore').count()) === 1, 'unticking an ore hides its mark
 console.log('pricing ledger');
 await velyn.context().close(); await go(nick, '/code', 300);
 await go(ugak, '/ledger', 1800);
-ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 6000, 'the ledger lists thousands of items');
+ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 4000, 'the ledger lists thousands of items');
+ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no Keys section');
 await ugak.getByLabel('Filter by name').fill('iron ingot'); await ugak.waitForTimeout(400); await ugak.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await ugak.waitForTimeout(500);
 const card = async (p) => (await p.locator('.ledger__card').textContent()).replace(/\s+/g, ' ');
 ok((await card(ugak)).includes('Unknown tier') && (await card(ugak)).includes('Price unknown'), 'items start at unknown tier and unknown price');

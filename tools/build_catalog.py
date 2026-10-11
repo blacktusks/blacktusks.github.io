@@ -291,6 +291,14 @@ def dump(name, obj):
     json.dump(obj, open(p, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print("wrote %-14s %7.1f KB" % (name, os.path.getsize(p) / 1024))
 
+# Left out at the clan's request: keys (nobody trades them), and every book
+# except spell tomes and the Code of Malacath.
+KEEP_BOOKS = {"The Code of Malacath"}
+def unwanted(r):
+    return r[2] == "keys" or (r[2] == "books" and r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS)
+dropped = {r[0] for r in out_items if unwanted(r)}
+out_items = [r for r in out_items if not unwanted(r)]
+for k in dropped: details.pop(k, None)
 out_items.sort(key=lambda r: (r[2], r[1].lower()))
 dump("items.json", {"v": 1, "sources": src_list, "cols": ["key", "name", "cat", "type", "cls", "value", "weight", "stat", "src", "flags"], "items": out_items})
 dump("details.json", details)
@@ -306,7 +314,9 @@ for m in mk["markers"]:
     if "x" not in m or not m.get("name") or m["rflags"] & 0x20: continue
     n = clean(m["name"]); t = m.get("type", 0)
     if n in ("Bounty", "Ferry Drop off Marker") or "DUPLICATE" in (m.get("edid") or ""): continue
-    label = "City" if 35 <= t <= 52 else TYPE.get(t, "Landmark")
+    if m["rflags"] & 0x800 and m.get("world"): continue        # hidden until a quest shows them (Thieves Guild)
+    # 35 to 52 are the hold capitals: even numbers the city itself, odd ones its palace or keep.
+    label = ("City" if t % 2 == 0 else "Castle") if 35 <= t <= 52 else TYPE.get(t, "Landmark")
     k = (n, round(m["x"] / 2000), round(m["y"] / 2000))
     if k in seen: continue
     seen.add(k)

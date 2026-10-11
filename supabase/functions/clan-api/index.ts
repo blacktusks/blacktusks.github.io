@@ -90,12 +90,22 @@ function checkPassword(p: unknown): string {
   if (new TextEncoder().encode(p).length > 72) throw new Fail(400, "Passwords can be at most 72 characters.");
   return p;
 }
+// Sign-in names keep the capitals they are given ("Grug"). Signing in and
+// uniqueness ignore case, so "grug" and "GRUG" are the same member.
 function checkUsername(u: unknown): string {
-  const s = String(u ?? "").trim().toLowerCase();
-  if (!/^[a-z0-9][a-z0-9_.-]{2,23}$/.test(s)) {
+  const s = String(u ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{2,23}$/.test(s)) {
     throw new Fail(400, "Sign-in names are 3 to 24 characters: letters, numbers, dot, dash or underscore.");
   }
   return s;
+}
+const emailFor = (username: string) => `${username.toLowerCase()}@${LOGIN_DOMAIN()}`;
+/** The profile holding this sign-in name in any capitalisation, if there is one. */
+async function holderOf(db: SupabaseClient, username: string): Promise<string | null> {
+  const pattern = username.replace(/([\\_%])/g, "\\$1");          // _ and % are wildcards to "ilike"
+  const { data, error } = await db.from("profiles").select("id").ilike("username", pattern).limit(1);
+  if (error) throw new Fail(500, "Could not check that sign-in name.");
+  return data?.[0]?.id ?? null;
 }
 function checkDisplayName(d: unknown): string {
   const s = String(d ?? "").trim();
@@ -212,7 +222,9 @@ async function handle(req: Request): Promise<Response> {
       const anon = createClient(url, PUBLIC_KEY(), { auth: { persistSession: false, autoRefreshToken: false } });
       const { error: bad } = await anon.auth.signInWithPassword({ email: who.user.email!, password: current });
       if (bad) throw new Fail(400, "The current password is not right.");
-      await anon.auth.signOut().catch(() => undefined);
+      // "local" ends only this throwaway session. The default would sign the
+      // member out on every device.
+      await anon.auth.signOut({ scope: "local" }).catch(() => undefined);
       await setPassword(db, me.id, next, false);
       await audit(db, me.id, "password.changed_own", me.id).catch(() => undefined);
       return json({ ok: true });
@@ -227,15 +239,14 @@ async function handle(req: Request): Promise<Response> {
       guardAccount(me, null, tags);
       // Only a Forgemaster may choose the password or reuse a removed member's sign-in name.
       const password = body.password && has(me.tags, "forgemaster") ? checkPassword(body.password) : tempPassword();
-      const { data: taken } = await db.from("profiles").select("id").eq("username", username).maybeSingle();
-      if (taken) throw new Fail(409, `The sign-in name "${username}" is already in use.`);
-      const { data: retired } = await db.from("retired_names").select("username").eq("username", username).maybeSingle();
+      if (await holderOf(db, username)) throw new Fail(409, `The sign-in name "${username}" is already in use.`);
+      const { data: retired } = await db.from("retired_names").select("username").eq("username", username.toLowerCase()).maybeSingle();
       if (retired && !has(me.tags, "forgemaster")) {
         throw new Fail(403, `"${username}" belonged to a removed member. Pick another sign-in name, or ask a Forgemaster to reuse it.`);
       }
       await vaultKey();                                    // fail before creating anything if the key is missing
       const { data: made, error } = await db.auth.admin.createUser({
-        email: `${username}@${LOGIN_DOMAIN()}`, password, email_confirm: true, user_metadata: { username },
+        email: emailFor(username), password, email_confirm: true, user_metadata: { username },
       });
       if (error || !made?.user) throw new Fail(400, error?.message ?? "Could not create the account.");
       const done = await db.rpc("admin_finish_create", {
@@ -262,6 +273,8 @@ async function handle(req: Request): Promise<Response> {
       const rename = body.username !== undefined && checkUsername(body.username) !== t.username ? checkUsername(body.username) : null;
       if (rename) {
         if (!has(me.tags, "forgemaster")) throw new Fail(403, "Only a Forgemaster can change a sign-in name.");
+        const holder = await holderOf(db, rename);
+        if (holder && holder !== t.id) throw new Fail(409, `The sign-in name "${rename}" is already in use.`);
         patch.username = rename;
       }
       if (!Object.keys(patch).length) return json({ profile: t });
@@ -269,7 +282,7 @@ async function handle(req: Request): Promise<Response> {
       const { data: profile, error } = await db.from("profiles").update(patch).eq("id", t.id).select().single();
       if (error) throw explain(error);
       if (rename) {
-        const moved = await db.auth.admin.updateUserById(t.id, { email: `${rename}@${LOGIN_DOMAIN()}`, email_confirm: true, user_metadata: { username: rename } });
+        const moved = await db.auth.admin.updateUserById(t.id, { email: emailFor(rename), email_confirm: true, user_metadata: { username: rename } });
         if (moved.error) {
           await db.from("profiles").update({ username: t.username }).eq("id", t.id);
           throw new Fail(400, `The sign-in name could not be changed: ${moved.error.message}`);
@@ -285,7 +298,7 @@ async function handle(req: Request): Promise<Response> {
       if (t.id === me.id) throw new Fail(400, "You cannot remove your own account.");
       guardAccount(me, t, []);
       await audit(db, me.id, "member.removed", t.id, { username: t.username, display_name: t.display_name });
-      const kept = await db.from("retired_names").upsert({ username: t.username, removed_by: me.id, removed_at: new Date().toISOString() });
+      const kept = await db.from("retired_names").upsert({ username: t.username.toLowerCase(), removed_by: me.id, removed_at: new Date().toISOString() });
       if (kept.error) throw new Fail(500, "Could not record the removal, so nothing was removed.");
       const { error } = await db.auth.admin.deleteUser(t.id);
       if (error) throw new Fail(400, error.message);

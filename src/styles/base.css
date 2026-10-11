@@ -36,7 +36,10 @@ img { max-width: 100%; }
 /* ── scene ── */
 .scene { position: fixed; inset: 0; overflow: hidden; background: #000; z-index: 0; }
 .scene__bg { position: absolute; left: 0; top: 0; max-width: none; user-select: none; will-change: transform; }
-.scene__fire { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scene__fire { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
+/* Firelight on the ground. Overlay warms and lifts what is there, so dark stays dark. */
+.scene__firelight { position: absolute; transform: translate(-50%, -44%); pointer-events: none; mix-blend-mode: overlay; opacity: 0.8;
+  background: radial-gradient(closest-side, rgba(255, 158, 84, 0.78), rgba(255, 132, 62, 0.4) 38%, rgba(255, 120, 50, 0.12) 70%, transparent); }
 /* Smoke drifts by sliding an oversized layer: transform only, so the GPU does the work. */
 .scene__smoke { position: absolute; left: 0; right: 0; bottom: -4%; height: 62%; overflow: hidden; opacity: 0.2; mix-blend-mode: screen; pointer-events: none; }
 .scene__smoke i { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% + 1856px); background: url('/img/smoke.webp') repeat-x 0 100% / 928px 100%; animation: drift 90s linear infinite; will-change: transform; }
@@ -162,6 +165,7 @@ canvas.banner.is-ready { opacity: 1; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--bone-2) 50%), linear-gradient(135deg, var(--bone-2) 50%, transparent 50%); background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 34px !important; }
 .check { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; font-size: 17px; }
 .check input { width: 20px; height: 20px; accent-color: var(--ember); flex: none; }
+.check small { display: block; margin-top: 2px; font: 400 14px/1.35 var(--book); color: var(--bone-2); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row--end { justify-content: flex-end; }
 .error { margin: 10px 0; padding: 9px 12px; border-left: 2px solid #e0604f; background: rgba(160, 30, 20, 0.22); color: #ffd3cb; font-size: 17px; }

@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Scene } from '../components/Scene';
+import { stay } from '../lib/supabase';
 
 export default function SignIn() {
   const { signIn } = useAuth();
   const go = useNavigate();
   const [name, setName] = useState(''); const [password, setPassword] = useState('');
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [keep, setKeep] = useState(stay.get);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setBusy(true);
-    try { await signIn(name, password); go('/', { replace: true }); }
+    try { await signIn(name, password, keep); go('/', { replace: true }); }
     catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   };
@@ -28,6 +30,10 @@ export default function SignIn() {
             </label>
             <label className="field"><span>Password</span>
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+              <span>Stay signed in<small>{keep ? 'This device remembers you until you sign out.' : 'You are signed out when you close the app.'}</small></span>
             </label>
             {error && <p className="error" role="alert">{error}</p>}
             <p className="hint">Accounts are made by the clan's officers. If you have no name and password yet, ask one of them.</p>

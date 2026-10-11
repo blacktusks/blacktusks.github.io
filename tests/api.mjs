@@ -123,10 +123,13 @@ console.log('accounts');
 ok((await ugak.api('admin.create', { username: 'intruder', tags: [] })).error, 'a member cannot add accounts');
 ok((await sheo.api('admin.create', { username: 'intruder', tags: [] })).error, 'Daedric cannot add accounts');
 const made = await sharn.api('admin.create', { username: 'Morgash', display_name: 'Morgash the Young', tags: ['unblooded'] });
-ok(made.data?.profile?.username === 'morgash' && made.data.password?.length >= 12, 'Wise Woman adds a member and receives a temporary password', made.error);
+ok(made.data?.profile?.username === 'Morgash' && made.data.password?.length >= 12, 'Wise Woman adds a member and receives a temporary password; the sign-in name keeps its capital', made.error);
 const morgash = await login('morgash', made.data.password);
 ok((await morgash.rpc('my_profile')).data.must_change_password === true, 'new member is asked to change password');
 ok((await sharn.api('admin.create', { username: 'morgash', tags: [] })).error?.includes('already in use'), 'duplicate sign-in name refused');
+ok((await sharn.api('admin.create', { username: 'MORGASH', tags: [] })).error?.includes('already in use'), 'the same sign-in name in other capitals is refused too');
+ok((await sharn.api('admin.create', { username: 'M_rgash', tags: [] })).data?.profile?.username === 'M_rgash', 'an underscore in a new name is not read as a wildcard');
+ok((await nick.api('admin.delete', { id: (await nick.rpc('member_admin_list')).data.find((m) => m.username === 'M_rgash').id })).data?.ok, 'and that member can be removed again');
 ok((await sharn.api('admin.create', { username: 'smith2', tags: ['forgemaster'] })).error, 'only a Forgemaster grants Forgemaster');
 ok((await sharn.api('admin.update', { id: morgash.me, tags: ['chieftain'] })).error, 'only Chieftain/Forgemaster grants Chieftain');
 ok((await sharn.api('admin.update', { id: morgash.me, tags: ['blooded', 'deceased'], display_name: 'Morgash' })).data?.profile?.tags.includes('deceased'), 'officer edits tags and name; Deceased tag works');
@@ -137,7 +140,17 @@ ok((await gorza.api('admin.set_password', { id: morgash.me })).error, 'Chieftain
 ok((await nick.api('admin.reveal_password', { id: morgash.me })).data?.password === made.data.password, 'Forgemaster views the current password');
 ok((await morgash.api('account.change_password', { current_password: 'wrong', new_password: 'MyOwnSecret9' })).error, 'wrong current password refused');
 ok((await morgash.api('account.change_password', { current_password: made.data.password, new_password: 'short' })).error, 'short password refused');
-ok((await morgash.api('account.change_password', { current_password: made.data.password, new_password: 'MyOwnSecret9' })).data?.ok, 'member changes their own password');
+{
+  // A wrong guess must not disturb the member's other sessions.
+  const phone = await login('morgash', made.data.password);
+  await morgash.api('account.change_password', { current_password: 'wrong again', new_password: 'MyOwnSecret9' });
+  ok((await phone.api('discord.presence')).data, 'a failed password change leaves other devices signed in');
+  ok((await morgash.api('account.change_password', { current_password: made.data.password, new_password: 'MyOwnSecret9' })).data?.ok, 'member changes their own password');
+  // Supabase ends every session on a password change. The app signs back in by itself (see the browser tests).
+  ok((await morgash.api('discord.presence')).error === 'Sign in again.', 'the session that changed the password is ended by the Auth server');
+  ok((await phone.api('discord.presence')).error === 'Sign in again.', 'and so is every other device');
+  ok((await (await login('morgash', 'MyOwnSecret9')).api('discord.presence')).data, 'signing in with the new password works straight away');
+}
 ok((await login('morgash', 'MyOwnSecret9')).me === morgash.me, 'new password signs in');
 ok(await login('morgash', made.data.password).then(() => false, () => true), 'old password no longer works');
 ok((await nick.api('admin.reveal_password', { id: morgash.me })).data?.password === 'MyOwnSecret9', 'Forgemaster sees the changed password');
@@ -224,6 +237,10 @@ console.log('hardening');
   ok((await nick.api('admin.update', { id: ugak.me, username: 'ugak2' })).data?.profile?.username === 'ugak2', 'the Forgemaster renames a sign-in');
   ok((await login('ugak2')).me === ugak.me, 'the renamed sign-in works');
   ok((await nick.api('admin.update', { id: ugak.me, username: 'ugak' })).data?.profile?.username === 'ugak', 'and can be renamed back');
+  ok((await nick.api('admin.update', { id: ugak.me, username: 'Ugak' })).data?.profile?.username === 'Ugak', 'the Forgemaster can change only the capitals of a sign-in name');
+  ok((await login('ugak')).me === ugak.me, 'and the member still signs in the same way');
+  ok((await nick.api('admin.update', { id: ugak.me, username: 'GORZA' })).error?.includes('already in use'), "a rename cannot take another member's name in different capitals");
+  ok((await nick.api('admin.update', { id: ugak.me, username: 'ugak' })).data?.profile?.username === 'ugak', 'capitals restored');
 }
 { // a password changed behind the app's back cannot leave a stale copy
   const made2 = (await nick.api('admin.create', { username: 'sneak', display_name: 'Sneak', tags: ['blooded'] })).data;
@@ -246,6 +263,40 @@ console.log('hardening');
   await nick.api('admin.delete', { id: sneak.me });
 }
 ok((await guest.rpc('my_tags')).error && (await guest.rpc('hidden_item_keys')).error, "guests cannot call the app's functions");
+
+console.log('tag changes');
+{
+  // Tags are the officers' business. Every other rank is tried here, one by one.
+  const pw = 'RolePass12345';
+  const mk = async (username, tags) => {
+    const r = await nick.api('admin.create', { username, display_name: username, tags, password: pw });
+    if (r.error) throw new Error(`create ${username}: ${r.error}`);
+    return login(username.toLowerCase(), pw);
+  };
+  const ranks = {
+    'Blooded': ugak, 'Ally': velyn, 'Daedric': sheo,
+    'Blood-Kin': await mk('Kinna', ['blood_kin']), 'Kinsmen': await mk('Kinsor', ['kinsmen']),
+    'Un-Blooded': await mk('Newblood', ['unblooded']), 'Deceased only': await mk('Ghost', ['deceased']),
+    'no tags at all': await mk('Nobody', []),
+  };
+  const tagsOf = async (id) => (await nick.rpc('member_admin_list')).data.find((m) => m.id === id).tags.join();
+  for (const [rank, c] of Object.entries(ranks)) {
+    const mine = await tagsOf(c.me);
+    ok((await c.api('admin.update', { id: c.me, tags: ['chieftain', 'forgemaster'] })).error?.includes('officers'), `${rank}: cannot change their own tags`);
+    ok((await c.api('admin.update', { id: c.me, tags: ['blooded'] })).error?.includes('officers'), `${rank}: cannot give themselves even a plain tag`);
+    ok((await c.api('admin.update', { id: gorza.me, tags: [] })).error?.includes('officers'), `${rank}: cannot change another member's tags`);
+    ok((await c.api('admin.create', { username: 'made' + rank.replace(/[^a-z]/gi, ''), tags: ['chieftain'] })).error?.includes('officers'), `${rank}: cannot add a member`);
+    ok((await c.api('admin.delete', { id: gorza.me })).error?.includes('officers'), `${rank}: cannot remove a member`);
+    const own = await c.from('profiles').update({ tags: ['chieftain'] }).eq('id', c.me).select('id');
+    ok(own.error || own.data.length === 0, `${rank}: cannot write their own tags straight to the database`);
+    const other = await c.from('profiles').update({ tags: [] }).eq('id', gorza.me).select('id');
+    ok(other.error || other.data.length === 0, `${rank}: cannot write another member's tags straight to the database`);
+    ok((await c.from('profiles').insert({ id: crypto.randomUUID(), username: 'ghostrow', display_name: 'Ghost Row', tags: ['chieftain'] })).error, `${rank}: cannot insert a profile`);
+    ok((await c.rpc('member_admin_list')).error, `${rank}: cannot open the officers' member list`);
+    ok(await tagsOf(c.me) === mine && await tagsOf(gorza.me) === 'chieftain', `${rank}: afterwards every tag is as it was`);
+  }
+  for (const rank of ['Blood-Kin', 'Kinsmen', 'Un-Blooded', 'Deceased only', 'no tags at all']) await nick.api('admin.delete', { id: ranks[rank].me });
+}
 
 console.log('settings and discord');
 ok((await gorza.from('app_settings').upsert({ key: 'discord_guild_id', value: '1' })).error, 'only the Forgemaster changes settings');

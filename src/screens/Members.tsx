@@ -80,7 +80,7 @@ function AddMember({ mine, onClose, onAdded }: { mine: string[]; onClose: () => 
       <form onSubmit={submit}>
         <label className="field"><span>Sign-in name</span>
           <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} required minLength={3} maxLength={24} />
-          <small>What they type to sign in. Letters, numbers, dot, dash or underscore.</small>
+          <small>What they type to sign in. Letters, numbers, dot, dash or underscore. Capitals are kept as you type them, and never matter when signing in.</small>
         </label>
         <label className="field"><span>Display name</span>
           <input type="text" value={display} onChange={(e) => setDisplay(e.target.value)} maxLength={40} placeholder="Their character's name" />

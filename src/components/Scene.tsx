@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 // The stronghold image is 2400x1800; the campfire sits here in it.
-const IMG_W = 2400, IMG_H = 1800, FIRE_X = 0.5025, FIRE_Y = 0.5585;
+const IMG_W = 2400, IMG_H = 1800, FIRE_X = 0.5038, FIRE_Y = 0.5594;
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 interface Fit { scale: number; left: number; top: number; fx: number; fy: number; portrait: boolean }
@@ -17,7 +17,7 @@ function fit(w: number, h: number): Fit {
   return { scale, left, top, fx: left + FIRE_X * iw, fy: top + FIRE_Y * ih, portrait };
 }
 
-interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; kind: 0 | 1 }
+interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; seed: number; kind: 0 | 1 | 2 }
 
 function sprite(stops: [number, string][]): HTMLCanvasElement {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -27,18 +27,27 @@ function sprite(stops: [number, string][]): HTMLCanvasElement {
   return c;
 }
 
-/** Fire, embers and the light they throw, drawn over the background image. */
-function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, f: Fit) {
+/**
+ * A small campfire on the log pile in the picture. Everything is sized in
+ * picture pixels (the pile is about 100 wide, the orc beside it about 55 tall)
+ * so the flame stays in proportion on any screen: roughly knee to chest high.
+ * `light` is a separate element that warms the ground with an overlay blend,
+ * which tints what is already there instead of laying orange fog over it.
+ */
+function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, f: Fit) {
   const fitRef = useRef(f); fitRef.current = f;
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const still = reducedMotion();
-    const flame = sprite([[0, 'rgba(255,236,170,0.95)'], [0.25, 'rgba(255,170,60,0.75)'], [0.6, 'rgba(220,70,20,0.28)'], [1, 'rgba(120,20,0,0)']]);
-    const ember = sprite([[0, 'rgba(255,220,150,1)'], [0.4, 'rgba(255,120,40,0.7)'], [1, 'rgba(255,60,0,0)']]);
-    const glow = sprite([[0, 'rgba(255,150,60,0.55)'], [0.35, 'rgba(255,110,40,0.22)'], [1, 'rgba(255,80,20,0)']]);
-    const sparks: Spark[] = [];
-    let raf = 0, last = performance.now(), flick = 1, target = 1, acc = 0;
+    const hot = sprite([[0, 'rgba(255,238,196,0.9)'], [0.35, 'rgba(255,196,110,0.55)'], [1, 'rgba(255,150,60,0)']]);
+    const mid = sprite([[0, 'rgba(255,170,74,0.8)'], [0.45, 'rgba(236,112,40,0.4)'], [1, 'rgba(200,70,20,0)']]);
+    const low = sprite([[0, 'rgba(190,72,30,0.6)'], [0.5, 'rgba(130,38,16,0.25)'], [1, 'rgba(90,20,8,0)']]);
+    const bed = sprite([[0, 'rgba(255,150,70,0.85)'], [0.4, 'rgba(230,90,36,0.45)'], [1, 'rgba(150,40,10,0)']]);
+    const ember = sprite([[0, 'rgba(255,214,150,1)'], [0.5, 'rgba(255,130,50,0.6)'], [1, 'rgba(255,80,10,0)']]);
+    const smoke = sprite([[0, 'rgba(150,152,160,0.5)'], [0.6, 'rgba(120,122,130,0.2)'], [1, 'rgba(100,102,110,0)']]);
+    const parts: Spark[] = [];
+    let raf = 0, last = performance.now(), flick = 0.9, target = 0.9, sinceFlick = 0, owedFlame = 0, owedSmoke = 0, owedSpark = 0;
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -46,56 +55,89 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, f: Fit) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize(); window.addEventListener('resize', resize);
+    const rnd = Math.random;
 
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      const { fx, fy, scale } = fitRef.current;
-      const u = 1800 * scale / 100;                 // 1% of the image height, in screen px
+      const { fx, fy, scale: px } = fitRef.current;       // px: one picture pixel on screen
+      const t = now / 1000;
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-      ctx.globalCompositeOperation = 'lighter';
 
-      acc += dt; if (acc > 0.09) { acc = 0; target = 0.78 + Math.random() * 0.34; }
-      flick += (target - flick) * Math.min(1, dt * 9);
-
-      // light on the ground and the longhouse wall
-      const gr = u * 22 * (0.94 + flick * 0.08);
-      ctx.globalAlpha = 0.62 * flick; ctx.drawImage(glow, fx - gr, fy - gr * 0.6, gr * 2, gr * 1.2);
-      ctx.globalAlpha = 0.5 * flick; ctx.drawImage(glow, fx - gr * 0.28, fy - gr * 0.2, gr * 0.56, gr * 0.36);
+      // an uneven flicker, shared by the flame and the light it throws
+      sinceFlick += dt; if (sinceFlick > 0.07 + rnd() * 0.09) { sinceFlick = 0; target = 0.72 + rnd() * 0.28; }
+      flick += (target - flick) * Math.min(1, dt * 10);
+      if (lightRef.current) lightRef.current.style.opacity = String(still ? 0.75 : 0.5 + flick * 0.42);
+      // the breeze leans the flame and carries the smoke to the right
+      const breeze = 0.5 + 0.5 * Math.sin(t * 0.43) * Math.sin(t * 0.17 + 1.3);
 
       if (!still) {
-        for (let i = 0; i < 4; i++) {
-          const off = (Math.random() - 0.5);
-          sparks.push({ x: fx + off * u * 1.5, y: fy + Math.random() * u * 0.35,
-            vx: -off * u * 1.1 + (Math.random() - 0.5) * u * 0.5, vy: -u * (3.4 + Math.random() * 3.6) * (1 - Math.abs(off) * 0.9),
-            life: 0, max: 0.38 + Math.random() * 0.42, size: u * (0.62 + Math.random() * 0.6), kind: 0 });
+        owedFlame += dt * 70;
+        while (owedFlame >= 1) {
+          owedFlame -= 1;
+          const off = (rnd() + rnd() + rnd() - 1.5) / 1.5;               // bunched toward the middle
+          const tall = 1 - Math.abs(off) * 0.6;
+          parts.push({ x: fx + off * 11 * px, y: fy + (rnd() - 0.3) * 4 * px, vx: -off * 9 * px,
+            vy: -(58 + rnd() * 52) * tall * px * (0.8 + flick * 0.25), life: 0, max: (0.36 + rnd() * 0.32) * (0.7 + tall * 0.4),
+            size: (5.5 + rnd() * 4) * px, seed: rnd() * 6.283, kind: 0 });
         }
-        if (Math.random() < dt * 8) {
-          sparks.push({ x: fx + (Math.random() - 0.5) * u * 1.2, y: fy - u * 1.5, vx: (Math.random() - 0.5) * u * 3,
-            vy: -u * (5 + Math.random() * 6), life: 0, max: 1.6 + Math.random() * 2.4, size: u * (0.12 + Math.random() * 0.14), kind: 1 });
+        owedSmoke += dt * 2.6;
+        while (owedSmoke >= 1) {
+          owedSmoke -= 1;
+          parts.push({ x: fx + (rnd() - 0.5) * 8 * px, y: fy - 30 * px, vx: (4 + rnd() * 5) * px, vy: -(17 + rnd() * 9) * px,
+            life: 0, max: 5 + rnd() * 3, size: (9 + rnd() * 5) * px, seed: rnd() * 6.283, kind: 2 });
+        }
+        owedSpark += dt * 1.3;
+        while (owedSpark >= 1) {
+          owedSpark -= 1;
+          parts.push({ x: fx + (rnd() - 0.5) * 10 * px, y: fy - (8 + rnd() * 14) * px, vx: (rnd() - 0.4) * 16 * px, vy: -(40 + rnd() * 50) * px,
+            life: 0, max: 1 + rnd() * 1.5, size: (0.7 + rnd() * 0.5) * px, seed: rnd() * 6.283, kind: 1 });
         }
       }
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i]; s.life += dt;
-        if (s.life >= s.max) { sparks.splice(i, 1); continue; }
-        const t = s.life / s.max;
+
+      // smoke first, drawn plainly so it greys what is behind it a little
+      ctx.globalCompositeOperation = 'source-over';
+      for (const s of parts) {
+        if (s.kind !== 2) continue;
+        const a = s.life / s.max;
+        const size = s.size * (1 + a * 3.2);
+        ctx.globalAlpha = Math.min(1, a / 0.15) * (1 - a) * 0.11;
+        ctx.drawImage(smoke, s.x - size, s.y - size, size * 2, size * 2);
+      }
+
+      // the glowing bed in the logs, then the flame, added light on light
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 + flick * 0.3;
+      ctx.drawImage(bed, fx - 17 * px, fy - 5 * px, 34 * px, 12 * px);
+
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const s = parts[i]; s.life += dt;
+        if (s.life >= s.max) { parts.splice(i, 1); continue; }
+        const a = s.life / s.max;
         if (s.kind === 0) {
-          s.x += s.vx * dt + Math.sin(now / 130 + i) * u * 0.02; s.y += s.vy * dt; s.vx *= 0.96;
-          const size = s.size * (1 - t * 0.8);
-          ctx.globalAlpha = (t < 0.12 ? t / 0.12 : 1 - t) * 0.5;
-          ctx.drawImage(flame, s.x - size, s.y - size * 1.5, size * 2, size * 3);
-        } else {
-          s.vx += Math.sin(now / 400 + i * 1.7) * u * 0.25 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.992;
-          ctx.globalAlpha = (1 - t) * 0.9;
+          s.vx += (breeze * 10 - 2) * px * dt;
+          s.x += s.vx * dt + Math.sin(t * 9 + s.seed) * 5 * px * a * dt * 6; s.y += s.vy * dt;
+          const size = s.size * (1 - a * 0.72);
+          const fade = Math.min(1, a / 0.08) * Math.pow(1 - a, 1.15);
+          const img = a < 0.3 ? hot : a < 0.68 ? mid : low;
+          ctx.globalAlpha = fade * (a < 0.3 ? 0.42 : 0.5);
+          ctx.drawImage(img, s.x - size * 0.82, s.y - size * 1.5, size * 1.64, size * 3);
+        } else if (s.kind === 1) {
+          s.vx += (Math.sin(t * 2.3 + s.seed) * 26 + breeze * 14) * px * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.985;
+          ctx.globalAlpha = (1 - a) * (0.55 + 0.45 * Math.sin(t * 23 + s.seed));
           ctx.drawImage(ember, s.x - s.size * 2, s.y - s.size * 2, s.size * 4, s.size * 4);
+        } else {
+          s.vx += (breeze * 7 - 1) * px * dt; s.x += s.vx * dt + Math.sin(t * 0.9 + s.seed) * 2 * px * dt; s.y += s.vy * dt;
         }
       }
+
       if (still) {            // a steady flame when motion is turned down
-        ctx.globalAlpha = 0.8; ctx.drawImage(flame, fx - u * 2, fy - u * 4, u * 4, u * 5);
+        ctx.globalAlpha = 0.5; ctx.drawImage(mid, fx - 10 * px, fy - 34 * px, 20 * px, 40 * px);
+        ctx.globalAlpha = 0.5; ctx.drawImage(hot, fx - 6 * px, fy - 22 * px, 12 * px, 26 * px);
       } else raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
-  }, [canvasRef]);
+  }, [canvasRef, lightRef]);
 }
 
 const VERT = `attribute vec2 p; varying vec2 v; void main(){ v = p * 0.5 + 0.5; v.y = 1.0 - v.y; gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -172,17 +214,20 @@ export function Banner({ className = '' }: { className?: string }) {
 export function Scene({ quiet = false }: { quiet?: boolean }) {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const fire = useRef<HTMLCanvasElement>(null);
+  const light = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const on = () => setSize({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', on); window.addEventListener('orientationchange', on);
     return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
   }, []);
   const f = fit(size.w, size.h);
-  useFire(fire, f);
+  useFire(fire, light, f);
   return (
     <div className={`scene ${quiet ? 'scene--quiet' : ''}`} aria-hidden="true">
       <img className="scene__bg" src={quiet ? './img/largashbur-dim.webp' : './img/largashbur.webp'} alt="" draggable={false}
         style={{ width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` }} />
+      {!quiet && <div ref={light} className="scene__firelight"
+        style={{ left: f.fx, top: f.fy, width: 430 * f.scale, height: 240 * f.scale }} />}
       {!quiet && <canvas ref={fire} className="scene__fire" />}
       <div className="scene__smoke scene__smoke--a"><i /></div>{!quiet && <div className="scene__smoke scene__smoke--b"><i /></div>}
       <div className="scene__shade" />

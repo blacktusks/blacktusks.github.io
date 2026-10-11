@@ -20,11 +20,10 @@ const ICON: Record<CatId, string> = {
   food: 'M12 6.2c1.3-1.5 3-2.2 4.7-1.8 2.7.6 4 3.5 3.5 6.7-.6 4-3 8.4-5.8 8.4-.9 0-1.6-.4-2.4-.4s-1.5.4-2.4.4c-2.8 0-5.2-4.4-5.8-8.4-.5-3.2.8-6.1 3.5-6.7 1.7-.4 3.4.3 4.7 1.8zm.2-.7c-.2-1.7.6-3.3 2.3-4 .2 1.7-.6 3.3-2.3 4z',
   ingredients: 'M20.5 3.5c.3 6.5-1.7 11.2-6 13.2-1.8.8-3.7.9-5.5.4L6 20.5 4.5 19l2.9-3.5c-.9-2.4-.5-5.1 1.4-7.3C11.3 5.3 15.2 3.8 20.5 3.5zM9.5 14.5c3-2.8 5.5-5.2 8-8-3 1.7-5.8 4-8 8z',
   books: 'M5 3h12.5c.8 0 1.5.7 1.5 1.5V21H7c-1.7 0-3-1.3-3-3V4c0-.6.4-1 1-1zm2 13.5c-.6 0-1 .4-1 1s.4 1 1 1h10v-2zM8 6v1.8h8V6z',
-  keys: 'M8 3a5 5 0 014.6 7L21 18.4V21h-3.5v-2H15v-2.5h-2.2l-2.6-2.6A5 5 0 118 3zm-1 3.2a1.8 1.8 0 100 3.6 1.8 1.8 0 000-3.6z',
   misc: 'M9 2.5h6l-1.2 3.2c3.4 1.4 5.7 5 5.7 9 0 4-3 6.8-7.5 6.8S4.5 18.7 4.5 14.7c0-4 2.3-7.6 5.7-9z',
 };
 const CATS: [CatId, string][] = [['fav', 'Favorites'], ['all', 'All'], ['weapons', 'Weapons'], ['apparel', 'Apparel'], ['potions', 'Potions'],
-  ['scrolls', 'Scrolls'], ['food', 'Food'], ['ingredients', 'Ingredients'], ['books', 'Books'], ['keys', 'Keys'], ['misc', 'Misc']];
+  ['scrolls', 'Scrolls'], ['food', 'Food'], ['ingredients', 'Ingredients'], ['books', 'Books'], ['misc', 'Misc']];
 const Glyph = ({ id, size = 24 }: { id: CatId; size?: number }) => (<svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true"><path fill="currentColor" d={ICON[id]} /></svg>);
 
 type SortKey = 'name' | 'type' | 'stat' | 'weight' | 'value' | 'tier' | 'price';

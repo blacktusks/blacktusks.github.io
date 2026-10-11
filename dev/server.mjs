@@ -107,14 +107,23 @@ function pgError(e) {
 }
 
 // ── auth ──
-const refreshTokens = new Map();
+// Sessions behave as they do on Supabase: an access token only counts with the
+// Auth server while its session exists. Signing out (everywhere by default) and
+// an admin password change both end the member's sessions.
+const refreshTokens = new Map();           // refresh token -> { user, sid }
+const sessions = new Map();                // session id -> user id
+const endSessions = (userId, onlySid) => {
+  for (const [sid, uid] of sessions) if (uid === userId && (!onlySid || sid === onlySid)) sessions.delete(sid);
+  for (const [tok, v] of refreshTokens) if (v.user === userId && (!onlySid || v.sid === onlySid)) refreshTokens.delete(tok);
+};
 const userJson = (u) => ({ id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email, email_confirmed_at: u.created_at,
   app_metadata: { provider: 'email', providers: ['email'] }, user_metadata: u.raw_user_meta_data, created_at: u.created_at, updated_at: u.updated_at });
-function session(u) {
+function session(u, sid = crypto.randomUUID()) {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const access_token = sign({ sub: u.id, role: 'authenticated', email: u.email, aud: 'authenticated', exp });
+  sessions.set(sid, u.id);
+  const access_token = sign({ sub: u.id, role: 'authenticated', email: u.email, aud: 'authenticated', exp, session_id: sid });
   const refresh_token = crypto.randomBytes(16).toString('hex');
-  refreshTokens.set(refresh_token, u.id);
+  refreshTokens.set(refresh_token, { user: u.id, sid });
   return { access_token, token_type: 'bearer', expires_in: 3600, expires_at: exp, refresh_token, user: userJson(u) };
 }
 async function auth(req, res, url, body) {
@@ -129,20 +138,28 @@ async function auth(req, res, url, body) {
       return send(res, 200, session(u));
     }
     if (grant === 'refresh_token') {
-      const id = refreshTokens.get(data.refresh_token);
-      const r = id ? await db.query(`select * from auth.users where id = $1`, [id]) : { rows: [] };
+      const held = refreshTokens.get(data.refresh_token);
+      const r = held && sessions.has(held.sid) ? await db.query(`select * from auth.users where id = $1`, [held.user]) : { rows: [] };
       if (!r.rows[0]) return send(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' });
       refreshTokens.delete(data.refresh_token);
-      return send(res, 200, session(r.rows[0]));
+      return send(res, 200, session(r.rows[0], held.sid));
     }
   }
   if (p === '/user' && req.method === 'GET') {
     const c = verify(bearer(req));
     const r = c?.sub ? await db.query(`select * from auth.users where id = $1`, [c.sub]) : { rows: [] };
     if (!r.rows[0]) return send(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' });
+    if (c.session_id && !sessions.has(c.session_id)) return send(res, 403, { code: 403, error_code: 'session_not_found', msg: 'Session not found' });
     return send(res, 200, userJson(r.rows[0]));
   }
-  if (p === '/logout') return send(res, 204);
+  if (p === '/logout') {
+    const c = verify(bearer(req));
+    if (c?.sub) {
+      if (c.session_id && !sessions.has(c.session_id)) return send(res, 403, { code: 403, error_code: 'session_not_found', msg: 'Session not found' });
+      endSessions(c.sub, url.searchParams.get('scope') === 'local' ? c.session_id : undefined);
+    }
+    return send(res, 204);
+  }
   if (p.startsWith('/admin/users')) {
     if (verify(bearer(req))?.role !== 'service_role') return send(res, 401, { code: 401, error_code: 'not_admin', msg: 'User not allowed' });
     const id = p.split('/')[3];
@@ -153,7 +170,10 @@ async function auth(req, res, url, body) {
         return send(res, 200, userJson(r.rows[0]));
       }
       if (req.method === 'PUT' && id) {
-        if (data.password !== undefined) await db.query(`update auth.users set encrypted_password = $2, updated_at = now() where id = $1`, [id, hash(data.password)]);
+        if (data.password !== undefined) {
+          await db.query(`update auth.users set encrypted_password = $2, updated_at = now() where id = $1`, [id, hash(data.password)]);
+          endSessions(id);                                   // Supabase signs the member out everywhere on a password change
+        }
         if (data.email !== undefined) await db.query(`update auth.users set email = $2, updated_at = now() where id = $1`, [id, String(data.email).toLowerCase()]);
         if (data.user_metadata !== undefined) await db.query(`update auth.users set raw_user_meta_data = $2 where id = $1`, [id, JSON.stringify(data.user_metadata)]);
         const r = await db.query(`select * from auth.users where id = $1`, [id]);
@@ -161,6 +181,7 @@ async function auth(req, res, url, body) {
         return send(res, 200, userJson(r.rows[0]));
       }
       if (req.method === 'DELETE' && id) {
+        endSessions(id);
         await db.query(`delete from auth.users where id = $1`, [id]);
         return send(res, 200, {});
       }

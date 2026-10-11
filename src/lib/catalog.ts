@@ -1,7 +1,7 @@
 import type { LedgerEntry } from './types';
 
-export type Cat = 'weapons' | 'apparel' | 'potions' | 'scrolls' | 'food' | 'ingredients' | 'books' | 'keys' | 'misc';
-const CATS: Cat[] = ['weapons', 'apparel', 'potions', 'scrolls', 'food', 'ingredients', 'books', 'keys', 'misc'];
+export type Cat = 'weapons' | 'apparel' | 'potions' | 'scrolls' | 'food' | 'ingredients' | 'books' | 'misc';
+const CATS: Cat[] = ['weapons', 'apparel', 'potions', 'scrolls', 'food', 'ingredients', 'books', 'misc'];
 export interface Item {
   key: string; name: string; cat: Cat; type: string; cls: string; value: number; weight: number;
   stat: number | null; src: string; generic: boolean; enchanted: boolean; custom?: boolean; lower: string;
@@ -49,7 +49,6 @@ export function autoUses(item: Item, d: Detail | undefined): string {
     out.push(item.cls === 'Jewelry' ? `Jewelry (${t}).` : item.cls === 'Clothing' ? `Clothing worn on the ${t === 'body' ? 'body' : t}.` : `${item.cls} armor: ${t}.`);
   } else if (item.cat === 'ingredients') out.push('Alchemy ingredient.' + (d?.fx?.length ? ` Effects: ${d.fx.join(', ')}.` : ''));
   else if (item.cat === 'books') out.push(item.type === 'Spell Tome' ? 'Teaches a spell when read.' : item.type === 'Skill Book' ? 'Raises a skill when read.' : 'Reading.');
-  else if (item.cat === 'keys') out.push('Opens a lock.');
   else if (item.type === 'Ore') out.push('Smelted into ingots.');
   else if (item.type === 'Fuel') out.push('Fuel for the smelter.');
   else if (item.type === 'Soul Gem') out.push('Holds a soul for enchanting.');
@@ -73,6 +72,6 @@ export function autoAcquire(item: Item, d: Detail | undefined): { made: boolean;
   if (d?.hv?.length) out.push(`Harvested from ${list(d.hv, 4)}.`);
   if (item.type === 'Ore') out.push('Mined from ore veins. See the Mining Map.');
   if (d?.tp) out.push(`Improved at a ${d.tp.b.toLowerCase()} with ${parts(d.tp.i)}.`);
-  if (!open.length && !d?.hv?.length && item.type !== 'Ore') out.unshift('Found: looted, bought or traded for. The server files list no recipe.');
+  if (!open.length && !d?.hv?.length && item.type !== 'Ore') out.unshift('Found: looted, bought or traded for. Not craftable.');
   return { made: open.length > 0, text: out.join(' ') };
 }

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { api } from '../lib/supabase';
+import { useAuth } from '../lib/auth';
 import { Modal } from '../components/ui';
 
 /** Change your own password. `forced` is the first sign-in with a temporary one. */
 export function ChangePassword({ forced, onDone, onClose }: { forced?: boolean; onDone: () => void; onClose?: () => void }) {
   const [current, setCurrent] = useState(''); const [next, setNext] = useState(''); const [again, setAgain] = useState('');
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [saved, setSaved] = useState(false);
+  const { renew } = useAuth();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
@@ -17,10 +19,13 @@ export function ChangePassword({ forced, onDone, onClose }: { forced?: boolean; 
     finally { setBusy(false); }
   };
 
+  // A password change signs the member out on every device, this one included.
+  // Continue signs this device straight back in with the new password.
+  const carryOn = async () => { setBusy(true); await renew(next); onDone(); };
   if (saved) {
     return (
-      <Modal title="Password changed" foot={<button className="btn btn--go" onClick={onDone}>Continue</button>}>
-        <p>Your new password is saved. Use it the next time you sign in.</p>
+      <Modal title="Password changed" foot={<button className="btn btn--go" onClick={carryOn} disabled={busy}>{busy ? 'One moment…' : 'Continue'}</button>}>
+        <p>Your new password is saved. Use it the next time you sign in. Any other device you were signed in on has been signed out.</p>
       </Modal>
     );
   }
