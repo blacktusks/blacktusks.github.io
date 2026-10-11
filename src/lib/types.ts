@@ -3,10 +3,14 @@ export interface Profile {
   id: string; display_name: string; tags: string[]; discord_name: string | null; created_at: string;
   /** The member's card: written by the member, readable by every member. */
   bio?: string; masteries?: { skill: string; level: number }[]; timezone?: string | null; availability?: number[] | null;
+  /** For a member with the Deceased tag, written by officers. The date is a day, unknown, or not entered yet (null and not unknown). */
+  death_cause?: string; death_date?: string | null; death_date_unknown?: boolean;
   /** Only present on your own profile and in the officers' list. */
   username?: string; must_change_password?: boolean;
 }
-export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at, bio, masteries, timezone, availability';
+export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at, bio, masteries, timezone, availability, death_cause, death_date, death_date_unknown';
+/** An officer's own wording for a tag on the Roles screen. */
+export interface RoleNote { tag: string; about: string; updated_at: string }
 export type Visibility = 'all' | 'specific' | 'draft';
 export interface Post {
   id: string; title: string; body: string; visibility: Visibility; audience: string[];

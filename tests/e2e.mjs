@@ -34,7 +34,20 @@ await g.context().close();
 
 console.log('member menu');
 const nick = await user('nick');
-ok((await menu(nick)).join('|') === 'Sign Out|Code of Mauloch|Notice Board|Black Tusk Oath|Members|Mine of the Black Tusks|Expansion Goals|Mining Map|Pricing Ledger', 'member menu has the nine options in the brief\'s order', (await menu(nick)).join('|'));
+ok((await menu(nick)).join('|') === 'Sign Out|Profile|Code of Mauloch|Notice Board|Black Tusk Oath|Members|Deceased|Roles|Mine of the Black Tusks|Expansion Goals|Mining Map|Pricing Ledger', 'member menu has its twelve options in order: Profile above Code of Mauloch, Deceased and Roles below Members', (await menu(nick)).join('|'));
+ok(await nick.evaluate(() => { const se = document.scrollingElement; return se.scrollHeight <= window.innerHeight + 1 && se.scrollWidth <= window.innerWidth + 1; }), 'the longer member menu still does not scroll');
+{ // Profile opens your own card, the same pop-up as your name on the Members screen
+  await nick.getByRole('button', { name: 'Profile', exact: true }).click(); await nick.waitForSelector('.modal');
+  ok((await nick.locator('.modal__head').textContent()) === 'Nick' && (await nick.locator('.modal input').count()) === 0 && (await nick.locator('.modal .presence--app').count()) === 1,
+    'Profile on the main menu opens your own card as others see it', await nick.locator('.modal__head').textContent());
+  await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+  ok((await nick.getByLabel('Display name').inputValue()) === 'Nick' && (await nick.getByLabel('Bio').count()) === 1 && await has(nick, 'button', 'Change password') && (await nick.locator('.tagpick').count()) === 1,
+    'and Edit there is the same form: name, bio, masteries, hours, password');
+  await nick.getByLabel('Bio').fill('Keeps the forge and the companion.'); await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.modal .note');
+  ok((await nick.textContent('.modal')).includes('Keeps the forge and the companion.') && nick.url().endsWith('/'), 'a change saved from Profile shows on the card, without leaving the main menu');
+  await nick.locator('.modal').getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(300);
+  ok((await nick.locator('.modal').count()) === 0, 'the card closes back to the menu');
+}
 ok(await nick.locator('canvas.banner').count() === 1 && await nick.locator('.scene__fire').count() === 1, 'banner and fire canvases are on the main menu');
 await nick.waitForSelector('canvas.banner.is-ready', { timeout: 15000 });
 { // the banner really animates: two frames differ
@@ -67,7 +80,7 @@ ok((await durak.textContent('.modal')).includes('Choose your own password'), 'fi
 ok((await durak.textContent('.modal')).includes('Forgemaster can read this password'), 'the member is told the Forgemaster can read it');
 await durak.getByLabel('Temporary password').fill(temp); await durak.getByLabel('New password', { exact: true }).fill('DurakOwnPass77'); await durak.getByLabel('New password again').fill('DurakOwnPass77');
 await durak.getByRole('button', { name: 'Save password' }).click(); await durak.getByRole('button', { name: 'Continue' }).click();
-await durak.waitForTimeout(900); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 9, 'after changing it the member is in');
+await durak.waitForTimeout(900); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 12, 'after changing it the member is in');
 // Supabase ends every session on a password change. The app must have signed this one back in,
 // or the next thing that needs the server (the Members screen asks it who is online) would fail.
 await go(durak, '/members', 1200);
@@ -81,7 +94,7 @@ await durak.context().close();
   await once.getByLabel('Stay signed in').uncheck();
   await once.getByLabel('Name').fill('UGAK'); await once.getByLabel('Password').fill('TestPass123'); await once.getByRole('button', { name: 'Sign in' }).click();
   await once.waitForSelector('.menu__nav');
-  ok((await menu(once)).length === 9, 'a name typed in capitals signs in');
+  ok((await menu(once)).length === 12, 'a name typed in capitals signs in');
   ok(await once.evaluate(() => !localStorage.getItem('black-tusk-session') && !!sessionStorage.getItem('black-tusk-session')), 'unticked, nothing is left on the device after the tab closes');
   const again = await once.context().newPage(); await again.goto(t.base); await again.waitForTimeout(900);
   ok((await menu(again)).length === 2, 'a new tab starts signed out');
@@ -94,12 +107,48 @@ ok((await nick.locator('.modal input').count()) === 0 && !(await has(nick, 'butt
 await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
 await nick.getByRole('button', { name: 'Show current password' }).click(); await nick.waitForSelector('.secret__value');
 ok((await nick.locator('.secret__value').textContent()) === 'DurakOwnPass77', 'Forgemaster can view the member\'s current password');
-await nick.locator('.tagpick').getByRole('button', { name: 'Deceased' }).click(); await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.note');
-ok((await nick.locator('.modal input').count()) === 0, 'saving goes back to the plain card');
-await nick.getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(400);
-ok((await nick.locator('.roster__row.is-fallen').count()) === 1, 'Deceased tag is applied and shown');
-const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 9, 'a Deceased member keeps full access');
-await durak2.context().close();
+ok((await nick.locator('.tagpick__one', { hasText: 'Daedric' }).count()) === 0 && (await nick.locator('.tagpick__one').count()) === 11, 'there is no Daedric tag to hand out any more');
+await nick.locator('.tagpick').getByRole('button', { name: 'Deceased' }).click();
+ok((await nick.textContent('.modal')).includes('moves Durak Iron-Jaw from Members to Deceased'), 'ticking Deceased says what saving will do');
+await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.page__body > .note');
+ok((await nick.locator('.modal').count()) === 0 && (await nick.textContent('.page__body > .note')).includes('Durak Iron-Jaw now rests among the Deceased'), 'saving with the Deceased tag closes the card and says where they went');
+ok((await nick.locator('.roster__row').count()) === 6 && (await nick.locator('.roster__row', { hasText: 'Durak' }).count()) === 0 && (await nick.textContent('.page__sub')).includes('6 by the fire'),
+  'a Deceased member is no longer listed or counted under Members');
+
+console.log('deceased');
+await go(nick, '/deceased', 900); await nick.waitForSelector('.roster__row');
+ok((await nick.locator('.page__title').textContent()) === 'Deceased' && (await nick.locator('.roster__row').count()) === 1 && (await nick.textContent('.page__sub')).includes('1 fallen')
+  && !(await has(nick, 'button', 'Add member')) && !(await has(nick, 'button', 'Discord link')), 'the Deceased screen lists only the fallen, with no Add member button');
+await nick.getByText('Durak Iron-Jaw').click(); await nick.waitForSelector('.modal');
+const fallenCard = async (page) => (await page.textContent('.modal')).replace(/\s+/g, ' ');
+ok((await fallenCard(nick)).includes('Cause of death') && (await fallenCard(nick)).includes('Not yet recorded') && (await fallenCard(nick)).includes('Date of passing')
+  && (await nick.locator('.fallen__date.is-blank').count()) === 1 && (await nick.locator('.fallen__date').textContent()).trim() === ''
+  && !/Bio|Usually around|UNKNOWN/.test(await fallenCard(nick)), 'a fallen card shows a cause of death and an empty date of passing in place of a bio and hours', await fallenCard(nick));
+await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+ok((await nick.getByLabel('Bio').count()) === 0 && (await nick.locator('.modal .avail').count()) === 0 && (await nick.getByLabel('Cause of death').count()) === 1 && (await nick.getByLabel('Date of passing').count()) === 1,
+  'its form has no bio and no hours, and an officer gets cause of death and date of passing');
+await nick.getByLabel('Cause of death').fill('Fell holding the gate against a giant.'); await nick.getByLabel('Date of passing').fill('2026-10-03');
+await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.modal .note');
+ok((await fallenCard(nick)).includes('Fell holding the gate against a giant.') && (await fallenCard(nick)).includes('October 3, 2026'), 'an officer records the cause of death and the date of passing', await fallenCard(nick));
+await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+await nick.getByLabel('Date unknown').check();
+ok(await nick.getByLabel('Date of passing').isDisabled(), 'ticking Date unknown puts the date aside');
+await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.modal .note');
+ok((await nick.locator('.fallen__date').textContent()).trim() === 'UNKNOWN' && !(await fallenCard(nick)).includes('October 3'), 'an unknown date of passing reads UNKNOWN');
+await nick.locator('.modal').getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(300);
+{ // the fallen keep their account; their own card has nothing of the living on it
+  const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 12, 'a Deceased member keeps full access');
+  await go(durak2, '/members', 900); await durak2.waitForSelector('.roster__row');
+  ok((await durak2.locator('.roster__row', { hasText: '(you)' }).count()) === 0, 'they do not find themselves under Members');
+  await go(durak2, '/', 300); await durak2.getByRole('button', { name: 'Profile', exact: true }).click(); await durak2.waitForSelector('.modal');
+  ok((await fallenCard(durak2)).includes('Fell holding the gate against a giant.') && (await fallenCard(durak2)).includes('UNKNOWN'), 'their Profile is the Deceased card');
+  await durak2.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
+  ok((await durak2.getByLabel('Display name').count()) === 1 && await has(durak2, 'button', 'Change password') && (await durak2.getByLabel('Bio').count()) === 0 && (await durak2.locator('.modal .avail').count()) === 0
+    && (await durak2.getByLabel('Cause of death').count()) === 0 && (await durak2.getByLabel('Date of passing').count()) === 0 && (await fallenCard(durak2)).includes("recorded by the clan's officers"),
+    'they can still edit their name and password, but not a bio, hours, or their own death');
+  await durak2.context().close();
+}
+await go(nick, '/members', 900); await nick.waitForSelector('.roster__row');
 
 { // a member fills in their own card: bio, masteries, hours
   const own = await user('velyn'); await go(own, '/members', 900);
@@ -186,6 +235,17 @@ await nick.getByRole('tab', { name: 'Change log' }).click(); await nick.waitForT
 await nick.getByRole('button', { name: 'Add an entry' }).click(); await nick.getByLabel('Version').fill('0.2.0'); await nick.getByLabel('What changed').fill('Sharper tusks');
 await nick.getByRole('button', { name: 'Save entry' }).click(); await nick.waitForTimeout(500);
 ok((await nick.locator('.log__row').count()) === 2, 'Forgemaster adds a change log entry');
+{ // entries fold: the newest starts open, the rest shut, and each opens and shuts on its own
+  const heads = nick.locator('.log__head');
+  ok((await nick.locator('.log__row.is-open').count()) === 1 && (await heads.nth(0).getAttribute('aria-expanded')) === 'true' && (await heads.nth(1).getAttribute('aria-expanded')) === 'false'
+    && !(await nick.textContent('.log')).includes('First build of the Black Tusk companion'), 'only the newest change log entry starts open');
+  await heads.nth(1).click(); await nick.waitForTimeout(250);
+  ok((await nick.locator('.log__row.is-open').count()) === 2 && (await nick.textContent('.log')).includes('First build of the Black Tusk companion'), 'an older entry opens when its line is pressed');
+  await heads.nth(0).click(); await nick.waitForTimeout(250);
+  ok((await nick.locator('.log__row.is-open').count()) === 1 && (await heads.nth(0).getAttribute('aria-expanded')) === 'false' && (await nick.locator('.log__more').count()) === 1, 'and an open one folds shut');
+  await heads.nth(1).focus(); await nick.keyboard.press('Enter'); await nick.waitForTimeout(250);
+  ok((await nick.locator('.log__row.is-open').count()) === 0, 'the keyboard folds them too');
+}
 await go(gorza, '/notices', 700); await gorza.getByRole('tab', { name: 'Change log' }).click(); await gorza.waitForTimeout(400);
 ok((await gorza.locator('.log__row').count()) === 2 && !(await has(gorza, 'button', 'Add an entry')) && !(await has(gorza, 'button', 'Edit')), 'the Chieftain reads the change log but cannot edit it');
 
@@ -194,8 +254,9 @@ await go(gorza, '/mine', 700);
 ok((await gorza.textContent('.page__body')).includes('No deals are on record'), 'the mine screen starts blank');
 await gorza.getByRole('button', { name: 'Add a deal' }).click(); await gorza.getByLabel('Title').fill('Iron for Riften'); await gorza.getByLabel('Text').fill('Forty ingots a week.');
 await gorza.getByRole('button', { name: 'Post deal' }).click(); await gorza.waitForTimeout(600);
-const sheo = await user('sheo'); await go(sheo, '/mine', 700);
-ok((await sheo.locator('.paper').count()) === 1 && !(await has(sheo, 'button', 'Add a deal')), 'Daedric reads deals but cannot add them');
+await go(velyn, '/mine', 700);
+ok((await velyn.locator('.paper').count()) === 1 && !(await has(velyn, 'button', 'Add a deal')), 'an Ally reads deals but cannot add them');
+const yatul = await user('yatul');
 await gorza.context().close();
 
 console.log('expansion goals');
@@ -210,7 +271,32 @@ ok((await ugak.locator('.stage').first().textContent()).includes('500'), 'the Wi
 ok((await ugak.locator('.stage').first().locator('.stagebar__pct').textContent()).trim() === '0%' && (await ugak.locator('.stage').first().locator('.stagebar__track span').evaluate((e) => e.style.width)) !== '0%',
   "the first stage's own bar moved (500 of 16,000 gold is under 1%)");
 ok(!(await has(ugak, 'button', 'Add a stage')) && !(await has(ugak, 'button', 'Edit')), 'members cannot edit goals');
-await sharn.context().close(); await go(sheo, '/code', 300);
+await sharn.context().close(); await go(yatul, '/code', 300);
+
+console.log('roles');
+{
+  await go(nick, '/roles', 800); await nick.waitForSelector('.roles__row');
+  const roleRow = async (page, name) => (await page.locator('.roles__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
+  ok((await nick.locator('.page__title').textContent()) === 'Roles' && (await nick.locator('.roles__row').count()) === 11 && !(await nick.textContent('.roles')).includes('Daedric'),
+    'Roles explains each of the eleven tags, and Daedric is not among them');
+  ok((await nick.locator('.roles__row .tag').allTextContents()).join('|') === 'Chieftain|Right Tusk|Left Tusk|Wise Woman|Forgemaster|Blooded|Blood-Kin|Kinsmen|Un-Blooded|Ally|Deceased', 'in standing order', (await nick.locator('.roles__row .tag').allTextContents()).join('|'));
+  ok((await roleRow(nick, 'Blooded')).includes('Sworn and proven.'), 'each starts with a short description');
+  await nick.getByRole('button', { name: 'Edit Blooded' }).click(); await nick.waitForSelector('.modal');
+  ok((await nick.getByLabel('Description').inputValue()) === 'Sworn and proven.' && !(await has(nick, 'button', 'Use the original')), 'an officer edits a description starting from what is shown');
+  await nick.getByLabel('Description').fill('Sworn to the clan and proven in battle.'); await nick.getByRole('button', { name: 'Save', exact: true }).click();
+  await nick.waitForFunction(() => !document.querySelector('.modal')); await nick.waitForTimeout(400);
+  ok((await roleRow(nick, 'Blooded')).includes('Sworn to the clan and proven in battle.'), 'the new description shows at once', await roleRow(nick, 'Blooded'));
+  await go(ugak, '/roles', 800); await ugak.waitForSelector('.roles__row');
+  ok((await roleRow(ugak, 'Blooded')).includes('Sworn to the clan and proven in battle.') && (await ugak.locator('.roles__row button').count()) === 0, 'every member reads the clan\'s wording, and only officers can edit it');
+  await nick.getByRole('button', { name: 'Edit Blooded' }).click(); await nick.waitForSelector('.modal');
+  await nick.getByRole('button', { name: 'Use the original' }).click(); await nick.waitForFunction(() => !document.querySelector('.modal')); await nick.waitForTimeout(400);
+  ok((await roleRow(nick, 'Blooded')).includes('Sworn and proven.'), 'an officer can hand a description back to the original');
+  // the fallen, as a plain member sees them
+  await go(ugak, '/deceased', 900); await ugak.waitForSelector('.roster__row');
+  await ugak.getByText('Durak Iron-Jaw').click(); await ugak.waitForSelector('.modal');
+  ok((await ugak.textContent('.modal')).includes('Fell holding the gate against a giant.') && !(await has(ugak, 'button', 'Edit')), 'a member reads a fallen card but cannot edit it');
+  await ugak.locator('.modal').getByRole('button', { name: 'Close' }).click();
+}
 
 console.log('mining map');
 await go(ugak, '/map', 2500);
@@ -285,6 +371,7 @@ console.log('discord status');
 {
   // Discord's widget names members by their nickname in the clan server. A member whose name here is the
   // same needs nothing on their profile; anyone else is matched by the Discord name they enter.
+  await t.backend.seedUser('snagga', 'Snagga the Quiet', ['kinsmen']);        // a member who never opens the app
   t.backend.discordStub.status = 200;
   t.backend.discordStub.body = { name: 'The Black Tusks', presence_count: 3, members: [
     { id: '0', username: 'GORZA GRA-LARGASH', discriminator: '0000', status: 'online', game: { name: 'The Elder Scrolls V: Skyrim Special Edition' } },
@@ -301,8 +388,9 @@ console.log('discord status');
   const row = async (name) => (await nick.locator('.roster__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
   ok((await row('Gorza gra-Largash')).includes('In the realm'), 'a member is found in Discord by their own name, with no Discord name on their profile', await row('Gorza gra-Largash'));
   ok((await row('Velyn of the Rift')).includes('In Discord'), 'someone online but not in the game reads as in Discord');
-  // Durak signed in once long ago and closed the app, so he is neither in Discord nor on the app
-  ok((await row('Durak Iron-Jaw')).includes('Offline') && !(await nick.locator('.roster').textContent()).includes('Not linked'), 'everyone else reads as offline; nobody is "not linked" any more', await row('Durak Iron-Jaw'));
+  // Snagga has never signed in, so she is neither in Discord nor on the app
+  ok((await row('Snagga the Quiet')).includes('Offline') && !(await nick.locator('.roster').textContent()).includes('Not linked'), 'everyone else reads as offline; nobody is "not linked" any more', await row('Snagga the Quiet'));
+  ok((await nick.locator('.roster__row', { hasText: 'Durak' }).count()) === 0, 'the fallen are not on the Members list, online or not');
   ok((await nick.locator('.page__sub').textContent()).includes('1 in the realm now'), 'the heading counts who is in the realm');
 
   // someone in Discord playing another game is simply "In Discord"; who is about comes first; and the app itself is seen
@@ -314,7 +402,7 @@ console.log('discord status');
   ok(order[0].startsWith('Gorza gra-Largash=In the realm'), 'whoever is in the realm heads the list', order.join(' | '));
   const lastOn = Math.max(...order.map((o, i) => (/In the realm|In Discord|On the app/.test(o) ? i : -1))), firstOff = order.findIndex((o) => !/In the realm|In Discord|On the app/.test(o));
   ok(firstOff < 0 || lastOn < firstOff, 'everyone who is about comes before everyone who is not', order.join(' | '));
-  ok(order.some((o) => /^Nick=.*On the app/.test(o)) && order.some((o) => /^Sharn=.*On the app/.test(o)) && !order.some((o) => /^Durak Iron-Jaw=.*On the app/.test(o)), 'members with the app open are marked "On the app", and one who has never opened it is not', order.join(' | '));
+  ok(order.some((o) => /^Nick=.*On the app/.test(o)) && order.some((o) => /^Sharn=.*On the app/.test(o)) && !order.some((o) => /^Snagga the Quiet=.*On the app/.test(o)), 'members with the app open are marked "On the app", and one who has never opened it is not', order.join(' | '));
   ok(/on the app/.test(await nick.locator('.page__sub').textContent()), 'and the heading counts them', await nick.locator('.page__sub').textContent());
   await nick.locator('.roster__row', { hasText: 'Velyn of the Rift' }).click(); await nick.waitForSelector('.modal');
   const seen = (await nick.locator('.modal').textContent());
@@ -386,15 +474,15 @@ const card = async (p) => (await p.locator('.ledger__card').textContent()).repla
 ok((await card(ugak)).includes('Unknown tier') && (await card(ugak)).includes('Price unknown'), 'items start at unknown tier and unknown price');
 ok((await card(ugak)).includes('Made at a smelter from 1 Iron Ore, 1 Poor Charcoal'), 'the server\'s own recipe is shown', (await card(ugak)).slice(0, 300));
 ok(!(await has(ugak, 'button', 'Edit')) && !(await has(ugak, 'button', 'Add an item')), 'members cannot edit the ledger');
-await go(sheo, '/ledger', 1800);
-await sheo.getByLabel('Filter by name').fill('iron ingot'); await sheo.waitForTimeout(400); await sheo.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await sheo.getByRole('button', { name: 'Edit' }).click();
-await sheo.locator('.modal').getByLabel('Tier').selectOption('2'); await sheo.locator('.modal').getByLabel('Clan price').fill('12');
+await go(yatul, '/ledger', 1800);
+await yatul.getByLabel('Filter by name').fill('iron ingot'); await yatul.waitForTimeout(400); await yatul.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await yatul.getByRole('button', { name: 'Edit' }).click();
+await yatul.locator('.modal').getByLabel('Tier').selectOption('2'); await yatul.locator('.modal').getByLabel('Clan price').fill('12');
 const png = await sharp({ create: { width: 240, height: 200, channels: 3, background: '#f4f4f4' } }).composite([{ input: await sharp({ create: { width: 120, height: 90, channels: 3, background: '#7a3b22' } }).png().toBuffer(), left: 60, top: 55 }]).png().toBuffer();
-await sheo.getByLabel('Choose a picture').setInputFiles({ name: 'ingot.png', mimeType: 'image/png', buffer: png });
-await sheo.waitForFunction(() => document.querySelector('.imgedit__view img')?.src.startsWith('blob:'), null, { timeout: 8000 }); await sheo.waitForTimeout(500);
-await sheo.getByRole('button', { name: 'Save', exact: true }).click(); await sheo.waitForSelector('.icard__view img:not(.is-render)', { timeout: 8000 });
-ok((await card(sheo)).includes('Tier 2') && (await card(sheo)).includes('12 septims'), 'Daedric sets tier and price');
-const px = await sheo.evaluate(async () => {
+await yatul.getByLabel('Choose a picture').setInputFiles({ name: 'ingot.png', mimeType: 'image/png', buffer: png });
+await yatul.waitForFunction(() => document.querySelector('.imgedit__view img')?.src.startsWith('blob:'), null, { timeout: 8000 }); await yatul.waitForTimeout(500);
+await yatul.getByRole('button', { name: 'Save', exact: true }).click(); await yatul.waitForSelector('.icard__view img:not(.is-render)', { timeout: 8000 });
+ok((await card(yatul)).includes('Tier 2') && (await card(yatul)).includes('12 septims'), 'Left Tusk sets tier and price');
+const px = await yatul.evaluate(async () => {
   const img = document.querySelector('.icard__view img'); const r = await fetch(img.src); const bmp = await createImageBitmap(await r.blob());
   const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
   const mid = g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data; return { w: bmp.width, h: bmp.height, mid: [...mid] };
@@ -407,14 +495,14 @@ await ugak.getByRole('button', { name: 'Weapons' }).click(); await ugak.waitForT
 ok((await card(ugak)).includes('Largashbur Master Smith'), 'clan-only designs name the Largashbur Master Smith');
 
 console.log('sign out');
-await sheo.context().close(); await ugak.context().close();
+await yatul.context().close(); await ugak.context().close();
 await go(nick, '/', 500); await nick.getByRole('button', { name: 'Sign Out' }).click(); await nick.waitForTimeout(600);
 ok((await menu(nick)).join('|') === 'Sign In|Code of Mauloch', 'signing out returns to the guest menu');
 
 console.log('phone');
 await nick.context().close();
 const phone = await user('ugak', 'TestPass123', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-for (const r of ['/', '/code', '/notices', '/oath', '/members', '/mine', '/expansion', '/map', '/ledger']) {
+for (const r of ['/', '/code', '/notices', '/oath', '/members', '/deceased', '/roles', '/mine', '/expansion', '/map', '/ledger']) {
   await go(phone, r, r === '/map' ? 2200 : 900);
   const over = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 1, `no sideways scroll on a phone at ${r}`, String(over));

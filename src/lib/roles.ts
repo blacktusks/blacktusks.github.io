@@ -1,6 +1,6 @@
 export type Tag =
   | 'chieftain' | 'right_tusk' | 'left_tusk' | 'wise_woman' | 'blooded' | 'blood_kin'
-  | 'kinsmen' | 'unblooded' | 'ally' | 'daedric' | 'forgemaster' | 'deceased';
+  | 'kinsmen' | 'unblooded' | 'ally' | 'forgemaster' | 'deceased';
 
 export interface TagInfo { id: Tag; label: string; color: string; about: string }
 
@@ -16,7 +16,6 @@ export const TAGS: TagInfo[] = [
   { id: 'kinsmen', label: 'Kinsmen', color: '#cdbb93', about: 'Of the clan.' },
   { id: 'unblooded', label: 'Un-Blooded', color: '#9a9488', about: 'Not yet proven.' },
   { id: 'ally', label: 'Ally', color: '#6fae9a', about: 'A trusted friend of the clan.' },
-  { id: 'daedric', label: 'Daedric', color: '#c05fd0', about: 'A Daedric Online game master.' },
   { id: 'deceased', label: 'Deceased', color: '#8a8f98', about: 'Their character has fallen. They keep their place by the fire.' },
 ];
 export const TAG = Object.fromEntries(TAGS.map((t) => [t.id, t])) as Record<Tag, TagInfo>;
@@ -27,14 +26,17 @@ const any = (tags: string[] | undefined, wanted: Tag[]) => !!tags && wanted.some
 
 /** Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster: members, mine deals, expansion goals. */
 export const isOfficer = (tags?: string[]) => any(tags, OFFICER);
-/** Officers plus Daedric: notices, map approvals, pricing ledger. */
-export const isHerald = (tags?: string[]) => any(tags, [...OFFICER, 'daedric']);
+/** Who posts notices, approves map pings and keeps the pricing ledger: the officers. */
+export const isHerald = (tags?: string[]) => any(tags, OFFICER);
 export const isForgemaster = (tags?: string[]) => any(tags, ['forgemaster']);
 
+/** A member whose character has died. They keep their account and are listed under Deceased, not Members. */
+export const isFallen = (tags?: string[]) => !!tags && tags.includes('deceased');
+
 export const sortTags = (tags: string[]) => [...tags].sort((a, b) => (ORDER[a as Tag] ?? 99) - (ORDER[b as Tag] ?? 99));
-/** Lower is higher standing. Deceased members sort last. */
+/** Lower is higher standing: the highest tag a member holds. The Deceased tag itself does not count,
+ *  so the fallen are listed by the standing they held. */
 export function standing(tags: string[]): number {
-  if (tags.includes('deceased')) return 90;
-  const ranks = tags.map((t) => ORDER[t as Tag] ?? 99);
+  const ranks = tags.filter((t) => t !== 'deceased').map((t) => ORDER[t as Tag] ?? 99);
   return ranks.length ? Math.min(...ranks) : 80;
 }

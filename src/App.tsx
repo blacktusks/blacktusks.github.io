@@ -14,6 +14,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 const NoticeBoard = lazy(() => import('./screens/NoticeBoard'));
 const Members = lazy(() => import('./screens/Members'));
+const Deceased = lazy(() => import('./screens/Deceased'));
+const Roles = lazy(() => import('./screens/Roles'));
 const MineDeals = lazy(() => import('./screens/MineDeals'));
 const Expansion = lazy(() => import('./screens/Expansion'));
 const MiningMap = lazy(() => import('./screens/MiningMap'));
@@ -68,6 +70,8 @@ export default function App() {
         <Route path="/notices" element={<MembersOnly><NoticeBoard /></MembersOnly>} />
         <Route path="/oath" element={<MembersOnly><Oath /></MembersOnly>} />
         <Route path="/members" element={<MembersOnly><Members /></MembersOnly>} />
+        <Route path="/deceased" element={<MembersOnly><Deceased /></MembersOnly>} />
+        <Route path="/roles" element={<MembersOnly><Roles /></MembersOnly>} />
         <Route path="/mine" element={<MembersOnly><MineDeals /></MembersOnly>} />
         <Route path="/expansion" element={<MembersOnly><Expansion /></MembersOnly>} />
         <Route path="/map" element={<MembersOnly><MiningMap /></MembersOnly>} />

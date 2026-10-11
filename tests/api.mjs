@@ -1,7 +1,7 @@
 // Permission tests: every role does (and is refused) what the brief says,
 // against real Postgres row-level security and the real server function.
 import { createClient } from '@supabase/supabase-js';
-import { start, discordStub } from '../dev/server.mjs';
+import { start, discordStub, raw } from '../dev/server.mjs';
 
 const { url, anonKey } = await start();
 let pass = 0, fail = 0;
@@ -21,10 +21,10 @@ async function login(username, password = 'TestPass123') {
 }
 const guest = client();
 const nick = await login('nick'), gorza = await login('gorza'), ugak = await login('ugak'),
-  sharn = await login('sharn'), velyn = await login('velyn'), sheo = await login('sheo');
+  sharn = await login('sharn'), velyn = await login('velyn'), yatul = await login('yatul');
 
 console.log('guests');
-for (const t of ['profiles', 'announcements', 'mine_deals', 'expansion_stages', 'ore_markers', 'ledger_entries', 'changelog', 'app_settings', 'password_vault', 'audit_log']) {
+for (const t of ['profiles', 'announcements', 'mine_deals', 'expansion_stages', 'ore_markers', 'ledger_entries', 'changelog', 'app_settings', 'password_vault', 'audit_log', 'role_notes']) {
   const { data, error } = await guest.from(t).select('*');
   ok(error || data.length === 0, `guest reads nothing from ${t}`, JSON.stringify(data)?.slice(0, 80));
 }
@@ -44,21 +44,21 @@ console.log('notice board');
 const post = async (c, row) => (await c.from('announcements').insert(row).select().single());
 ok((await post(ugak, { title: 'no' })).error, 'Blooded cannot post');
 ok((await post(velyn, { title: 'no' })).error, 'Ally cannot post');
-const a1 = (await post(sheo, { title: 'From the Daedra' })).data;
-ok(a1?.id, 'Daedric can post');
+const a1 = (await post(yatul, { title: 'From the Left Tusk' })).data;
+ok(a1?.id, 'Left Tusk can post');
 const a2 = (await post(sharn, { title: 'For Ugak only', visibility: 'specific', audience: [ugak.me] })).data;
 const a3 = (await post(gorza, { title: 'Chief draft', visibility: 'draft' })).data;
 const a4 = (await post(nick, { title: 'Gone already', expires_at: new Date(Date.now() - 60000).toISOString() })).data;
 const a5 = (await post(nick, { title: 'Up for an hour', expires_at: new Date(Date.now() + 3600000).toISOString() })).data;
 ok(a2?.id && a3?.id && a4?.id && a5?.id, 'officers can post with audience, draft and timers');
 const titles = async (c) => (await c.from('announcements').select('*')).data.map((r) => r.title).sort().join('|');
-ok(await titles(ugak) === 'For Ugak only|From the Daedra|Up for an hour', 'Ugak sees public, targeted, unexpired', await titles(ugak));
-ok(await titles(velyn) === 'From the Daedra|Up for an hour', 'Velyn does not see the targeted notice', await titles(velyn));
-ok(await titles(gorza) === 'Chief draft|For Ugak only|From the Daedra|Gone already|Up for an hour', 'Chieftain sees own draft and expired ones', await titles(gorza));
-ok(await titles(nick) === 'For Ugak only|From the Daedra|Gone already|Up for an hour', 'another officer does not see the chief draft', await titles(nick));
+ok(await titles(ugak) === 'For Ugak only|From the Left Tusk|Up for an hour', 'Ugak sees public, targeted, unexpired', await titles(ugak));
+ok(await titles(velyn) === 'From the Left Tusk|Up for an hour', 'Velyn does not see the targeted notice', await titles(velyn));
+ok(await titles(gorza) === 'Chief draft|For Ugak only|From the Left Tusk|Gone already|Up for an hour', 'Chieftain sees own draft and expired ones', await titles(gorza));
+ok(await titles(nick) === 'For Ugak only|From the Left Tusk|Gone already|Up for an hour', 'another officer does not see the chief draft', await titles(nick));
 ok((await ugak.from('announcements').delete().eq('id', a1.id).select()).data.length === 0, 'a member cannot remove a notice');
 ok((await gorza.from('announcements').delete().eq('id', a4.id).select()).data.length === 1, 'an officer removes an older notice');
-ok((await sheo.from('announcements').update({ title: 'Edited' }).eq('id', a5.id).select()).data.length === 1, 'Daedric can edit a notice');
+ok((await yatul.from('announcements').update({ title: 'Edited' }).eq('id', a5.id).select()).data.length === 1, 'Left Tusk can edit a notice');
 ok((await nick.from('announcements').delete().eq('id', a3.id).select()).data.length === 0, "an officer cannot remove another's private draft");
 
 console.log('changelog');
@@ -67,7 +67,7 @@ ok(!(await nick.from('changelog').insert({ title: '0.1.1 fix', version: '0.1.1' 
 ok((await ugak.from('changelog').select('*')).data.length === 2, 'members read the change log');
 
 console.log('mine deals');
-ok((await sheo.from('mine_deals').insert({ author_id: sheo.me, title: 'no' })).error, 'Daedric cannot add mine deals');
+ok((await velyn.from('mine_deals').insert({ author_id: velyn.me, title: 'no' })).error, 'an Ally cannot add mine deals');
 const d1 = (await gorza.from('mine_deals').insert({ author_id: gorza.me, title: 'Iron for Riften', body: '40 ingots a week', visibility: 'specific', audience: [velyn.me] }).select().single()).data;
 const d2 = (await nick.from('mine_deals').insert({ author_id: nick.me, title: 'Open terms' }).select().single()).data;
 ok(d1?.id && d2?.id, 'officers add deals');
@@ -83,7 +83,7 @@ ok(sum('Gold') === 64500 && sum('Iron Ingots') === 2380 && sum('Steel Ingots') =
   && sum('Leather Strips') === 420 && sum('Pelts (Any)') === 275 && sum('Silver Ingots') === 8, 'stage goals add up to the totals in the brief');
 ok((await ugak.from('expansion_resources').update({ have: 5 }).eq('id', res[0].id).select()).data.length === 0, 'members cannot change progress');
 ok((await sharn.from('expansion_resources').update({ have: 1200 }).eq('id', res[0].id).select()).data[0]?.have === 1200, 'Wise Woman updates progress');
-ok((await sheo.from('expansion_stages').update({ title: 'x' }).eq('id', res[0].stage_id).select()).data.length === 0, 'Daedric cannot edit goals');
+ok((await velyn.from('expansion_stages').update({ title: 'x' }).eq('id', res[0].stage_id).select()).data.length === 0, 'an Ally cannot edit goals');
 
 console.log('mining map');
 const ping = async (c, row) => (await c.from('ore_markers').insert({ ore: 'iron', x: 1000, y: 2000, ...row }).select().single());
@@ -93,11 +93,11 @@ const m2 = (await ping(nick, { ore: 'ebony' })).data;
 ok(m2?.status === 'approved' && m2.reviewed_by === nick.me, "a higher-up's marker skips approval");
 ok((await velyn.from('ore_markers').select('*')).data.length === 1, 'others see only approved markers');
 ok((await ugak.from('ore_markers').select('*')).data.length === 2, 'the pinger also sees their pending ping');
-ok((await sheo.from('ore_markers').select('*')).data.length === 2, 'approvers see pending pings');
+ok((await yatul.from('ore_markers').select('*')).data.length === 2, 'approvers see pending pings');
 ok((await ugak.from('ore_markers').update({ status: 'approved' }).eq('id', m1.id).select()).data[0]?.status === 'pending', 'a member cannot approve their own ping');
 ok((await velyn.from('ore_markers').update({ note: 'x' }).eq('id', m1.id).select()).data.length === 0, "a member cannot edit someone else's ping");
-const ap = (await sheo.from('ore_markers').update({ status: 'approved' }).eq('id', m1.id).select()).data[0];
-ok(ap?.status === 'approved' && ap.reviewed_by === sheo.me && ap.created_by === ugak.me, 'Daedric approves; reviewer recorded, author kept');
+const ap = (await yatul.from('ore_markers').update({ status: 'approved' }).eq('id', m1.id).select()).data[0];
+ok(ap?.status === 'approved' && ap.reviewed_by === yatul.me && ap.created_by === ugak.me, 'Left Tusk approves; reviewer recorded, author kept');
 ok((await velyn.from('ore_markers').select('*')).data.length === 2, 'approved ping is now on everyone\'s map');
 const m3 = (await ping(velyn, { ore: 'silver' })).data;
 ok((await gorza.from('ore_markers').update({ status: 'rejected', review_note: 'Nothing there' }).eq('id', m3.id).select()).data[0]?.status === 'rejected', 'Chieftain denies a false ping');
@@ -106,22 +106,22 @@ ok((await ugak.from('ore_markers').delete().eq('id', m2.id).select()).data.lengt
 
 console.log('pricing ledger');
 ok((await ugak.from('ledger_entries').upsert({ item_key: 'skyrim.esm:05ACE4', price: 9 })).error, 'members cannot price items');
-ok(!(await sheo.from('ledger_entries').upsert({ item_key: 'skyrim.esm:05ACE4', price: 12, tier: 1 })).error, 'Daedric can price items');
+ok(!(await yatul.from('ledger_entries').upsert({ item_key: 'skyrim.esm:05ACE4', price: 12, tier: 1 })).error, 'Left Tusk can price items');
 ok(!(await gorza.from('ledger_entries').upsert({ item_key: 'skyrim.esm:05ACE4', price: 14 })).error, 'Chieftain updates the same entry');
 const le = (await ugak.from('ledger_entries').select('*')).data[0];
 ok(le.price === 14 && le.tier === 1 && le.updated_by === gorza.me, 'members read the entry; editor recorded');
-ok((await sheo.from('ledger_entries').upsert({ item_key: 'x', tier: 9 })).error, 'tier outside 1 to 5 refused');
+ok((await yatul.from('ledger_entries').upsert({ item_key: 'x', tier: 9 })).error, 'tier outside 1 to 5 refused');
 {
   const blob = new Blob([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], { type: 'image/png' });
   ok((await ugak.storage.from('item-images').upload('iron.png', blob)).error, 'members cannot upload item images');
-  ok(!(await sheo.storage.from('item-images').upload('iron.png', blob, { upsert: true })).error, 'Daedric uploads an item image');
-  const pub = sheo.storage.from('item-images').getPublicUrl('iron.png').data.publicUrl;
+  ok(!(await yatul.storage.from('item-images').upload('iron.png', blob, { upsert: true })).error, 'Left Tusk uploads an item image');
+  const pub = yatul.storage.from('item-images').getPublicUrl('iron.png').data.publicUrl;
   ok((await fetch(pub)).status === 200, 'the image is publicly readable');
 }
 
 console.log('accounts');
 ok((await ugak.api('admin.create', { username: 'intruder', tags: [] })).error, 'a member cannot add accounts');
-ok((await sheo.api('admin.create', { username: 'intruder', tags: [] })).error, 'Daedric cannot add accounts');
+ok((await velyn.api('admin.create', { username: 'intruder', tags: [] })).error, 'an Ally cannot add accounts');
 const made = await sharn.api('admin.create', { username: 'Morgash', display_name: 'Morgash the Young', tags: ['unblooded'] });
 ok(made.data?.profile?.username === 'Morgash' && made.data.password?.length >= 12, 'Wise Woman adds a member and receives a temporary password; the sign-in name keeps its capital', made.error);
 const morgash = await login('morgash', made.data.password);
@@ -173,16 +173,16 @@ ok(await login('morgash', 'ForgeReset2026').then(() => false, () => true), 'remo
 
 console.log('hardening');
 { // nobody can rewrite who posted or who reviewed
-  const n = (await sheo.from('announcements').insert({ title: 'Gold to the Daedra' }).select().single()).data;
-  const forged = (await sheo.from('announcements').update({ author_id: gorza.me, title: 'Gold to the Daedra!' }).eq('id', n.id).select().single()).data;
-  ok(forged.author_id === sheo.me && forged.updated_by === sheo.me, 'the author of a notice cannot be changed, and edits are stamped');
+  const n = (await yatul.from('announcements').insert({ title: 'Gold to the Daedra' }).select().single()).data;
+  const forged = (await yatul.from('announcements').update({ author_id: gorza.me, title: 'Gold to the Daedra!' }).eq('id', n.id).select().single()).data;
+  ok(forged.author_id === yatul.me && forged.updated_by === yatul.me, 'the author of a notice cannot be changed, and edits are stamped');
   const chief = (await gorza.from('announcements').insert({ title: 'Chief speaks' }).select().single()).data;
-  const edited = (await sheo.from('announcements').update({ body: 'altered' }).eq('id', chief.id).select().single()).data;
-  ok(edited.author_id === gorza.me && edited.updated_by === sheo.me, "editing another's notice leaves a trace");
+  const edited = (await yatul.from('announcements').update({ body: 'altered' }).eq('id', chief.id).select().single()).data;
+  ok(edited.author_id === gorza.me && edited.updated_by === yatul.me, "editing another's notice leaves a trace");
   const deal = (await sharn.from('mine_deals').insert({ title: 'Deal' }).select().single()).data;
   ok((await sharn.from('mine_deals').update({ author_id: gorza.me }).eq('id', deal.id).select().single()).data.author_id === sharn.me, 'the author of a deal cannot be changed');
   const mk = (await nick.from('ore_markers').select('*').eq('status', 'approved').limit(1)).data[0];
-  const forgedReview = (await sheo.from('ore_markers').update({ reviewed_by: gorza.me, review_note: 'Chief checked it' }).eq('id', mk.id).select().single()).data;
+  const forgedReview = (await yatul.from('ore_markers').update({ reviewed_by: gorza.me, review_note: 'Chief checked it' }).eq('id', mk.id).select().single()).data;
   ok(forgedReview.reviewed_by === mk.reviewed_by && forgedReview.review_note === mk.review_note, 'the reviewer of a marker cannot be forged');
 }
 { // map pings: bad coordinates, floods and bait-and-switch
@@ -193,7 +193,7 @@ console.log('hardening');
   ok((await ugak.from('ore_markers').insert(many)).error, 'a member cannot flood the approval queue');
   const p = (await ugak.from('ore_markers').insert({ ore: 'iron', x: 500, y: 500, note: 'Real vein' }).select().single()).data;
   await ugak.from('ore_markers').update({ ore: 'ebony', note: 'Trap' }).eq('id', p.id);
-  ok((await sheo.from('ore_markers').update({ status: 'approved' }).eq('id', p.id).eq('updated_at', p.updated_at).select()).data.length === 0, 'approving a ping that changed since it was viewed does nothing');
+  ok((await yatul.from('ore_markers').update({ status: 'approved' }).eq('id', p.id).eq('updated_at', p.updated_at).select()).data.length === 0, 'approving a ping that changed since it was viewed does nothing');
 }
 { // members see names and tags, not sign-in names
   ok((await ugak.from('profiles').select('*')).error, 'members cannot read whole profile rows');
@@ -202,7 +202,7 @@ console.log('hardening');
   ok((await ugak.from('profiles').select('username')).error, 'sign-in names are not readable by members');
   ok((await ugak.rpc('my_profile')).data.username === 'ugak', 'a member reads their own full profile');
   ok((await ugak.rpc('member_admin_list')).error, 'the full list is refused to non-officers');
-  ok((await sheo.rpc('member_admin_list')).error, 'and to Daedric');
+  ok((await velyn.rpc('member_admin_list')).error, 'and to an Ally');
   ok((await sharn.rpc('member_admin_list')).data.length === 6, 'officers get the full list');
   ok((await ugak.rpc('update_my_profile', { p_display_name: 'gorza GRA-largash' })).error, "a member cannot take another member's display name");
   ok((await ugak.rpc('update_my_profile', { p_display_name: '\u200B\u200B' })).error, 'an invisible display name is refused');
@@ -210,16 +210,16 @@ console.log('hardening');
   ok((await ugak.rpc('update_my_profile', { p_display_name: 'Ugak the Bold', p_discord_name: 'GORZA' })).error, "a member cannot claim another member's Discord name");
 }
 { // hidden ledger entries are really hidden
-  await sheo.from('ledger_entries').upsert({ item_key: 'skyrim.esm:0HIDDEN', hidden: true, acquire: 'officers only note' });
+  await yatul.from('ledger_entries').upsert({ item_key: 'skyrim.esm:0HIDDEN', hidden: true, acquire: 'officers only note' });
   ok(!(await ugak.from('ledger_entries').select('*')).data.some((e) => e.hidden), 'members do not receive hidden entries');
   ok((await ugak.rpc('hidden_item_keys')).data.includes('skyrim.esm:0HIDDEN'), 'members learn only which items to leave out');
-  ok((await sheo.from('ledger_entries').upsert({ item_key: 'custom:bad', custom: { name: 123 } })).error, 'a malformed custom item is refused');
-  ok(!(await sheo.from('ledger_entries').upsert({ item_key: 'custom:ok', custom: { name: 'Tusk Charm', cat: 'misc', type: 'Charm', value: 5, weight: 0.1 } })).error, 'a well-formed custom item is accepted');
+  ok((await yatul.from('ledger_entries').upsert({ item_key: 'custom:bad', custom: { name: 123 } })).error, 'a malformed custom item is refused');
+  ok(!(await yatul.from('ledger_entries').upsert({ item_key: 'custom:ok', custom: { name: 'Tusk Charm', cat: 'misc', type: 'Charm', value: 5, weight: 0.1 } })).error, 'a well-formed custom item is accepted');
 }
 { // storage: pictures only
   const html = new Blob(['<script>alert(1)</script>'], { type: 'text/html' });
-  ok((await sheo.storage.from('item-images').upload('x.html', html)).error, 'non-picture uploads are refused');
-  ok((await sheo.storage.from('item-images').upload('big.png', new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'image/png' }))).error, 'oversized uploads are refused');
+  ok((await yatul.storage.from('item-images').upload('x.html', html)).error, 'non-picture uploads are refused');
+  ok((await yatul.storage.from('item-images').upload('big.png', new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'image/png' }))).error, 'oversized uploads are refused');
 }
 { // accounts: gaps in the officer guard
   const victim = (await sharn.api('admin.create', { username: 'target', display_name: 'Target', tags: ['kinsmen'] })).data;
@@ -299,7 +299,7 @@ console.log('member cards');
     "an officer sets another member's masteries; the bio stays as the member wrote it", set.error);
   ok((await velyn.from('profiles').select('masteries').eq('id', ugak.me).single()).data.masteries[0].level === 4, 'and everyone sees the change');
   ok((await ugak.api('admin.update', { id: velyn.me, masteries: [{ skill: 'cook', level: 5 }] })).error?.includes('officers'), "a Blooded member cannot set someone else's masteries");
-  ok((await sheo.api('admin.update', { id: ugak.me, masteries: [] })).error?.includes('officers'), 'nor can a Daedric member');
+  ok((await velyn.api('admin.update', { id: ugak.me, masteries: [] })).error?.includes('officers'), 'nor can an Ally');
   ok((await sharn.api('admin.update', { id: nick.me, masteries: [{ skill: 'cook', level: 5 }] })).error, "an officer cannot set a Forgemaster's masteries");
   ok(!(await nick.api('admin.update', { id: gorza.me, masteries: [{ skill: 'armor', level: 5 }] })).error, "the Forgemaster can set the Chieftain's");
   for (const [bad, why] of [[[{ skill: 'cook', level: 6 }], 'a level over 5'], [[{ skill: 'dragon_rider', level: 1 }], 'an unknown skill'],
@@ -324,7 +324,7 @@ console.log('tag changes');
     return login(username.toLowerCase(), pw);
   };
   const ranks = {
-    'Blooded': ugak, 'Ally': velyn, 'Daedric': sheo,
+    'Blooded': ugak, 'Ally': velyn,
     'Blood-Kin': await mk('Kinna', ['blood_kin']), 'Kinsmen': await mk('Kinsor', ['kinsmen']),
     'Un-Blooded': await mk('Newblood', ['unblooded']), 'Deceased only': await mk('Ghost', ['deceased']),
     'no tags at all': await mk('Nobody', []),
@@ -361,6 +361,69 @@ ok((await ugak.api('discord.presence')).data?.members?.[0]?.game?.includes('Skyr
 await nick.from('app_settings').upsert({ key: 'discord_guild_id', value: '223456789012345678' });
 discordStub.status = 403;
 ok((await ugak.api('discord.presence')).data?.reason?.includes('Server Widget'), 'a disabled widget is explained');
+
+
+console.log('0.2.5: the Daedric tag is retired');
+{
+  ok((await nick.api('admin.create', { username: 'Daedra1', tags: ['daedric'] })).error, 'the Daedric tag cannot be given to a new member');
+  ok((await nick.api('admin.update', { id: ugak.me, tags: ['blooded', 'daedric'] })).error, 'nor to an existing one');
+  let refused = false;
+  try { await raw.query(`update public.profiles set tags = array['daedric'] where id = $1`, [ugak.me]); } catch { refused = true; }
+  ok(refused, 'the database itself refuses the tag');
+  ok((await nick.rpc('member_admin_list')).data.every((m) => !m.tags.includes('daedric')), 'nobody carries it');
+  // what Daedric could do is now the officers' alone
+  ok((await velyn.from('ledger_entries').upsert({ item_key: 'skyrim.esm:0NOPE', price: 1 })).error, 'a plain member still cannot price items');
+}
+
+console.log('0.2.5: the fallen');
+{
+  const born = await nick.api('admin.create', { username: 'Fallen1', display_name: 'Borgakh the Fallen', tags: ['blooded', 'deceased'], password: 'RolePass12345' });
+  const ghost = (await nick.rpc('member_admin_list')).data.find((m) => m.id === born.data?.profile?.id);
+  const ghostSelf = await login('fallen1', 'RolePass12345');
+  ok(ghost && ghost.death_cause === '' && ghost.death_date === null && ghost.death_date_unknown === false, 'a newly Deceased member starts with no cause and an empty date', JSON.stringify(ghost)?.slice(0, 200));
+  const rec = await sharn.rpc('set_death_record', { p_id: ghost.id, p_cause: '  Fell to a giant near Bleakwind Basin.  ', p_date: '2026-10-01', p_unknown: false });
+  ok(rec.data?.death_cause === 'Fell to a giant near Bleakwind Basin.' && rec.data.death_date === '2026-10-01', 'an officer records the cause of death and the date of passing', rec.error?.message);
+  const seen = (await velyn.from('profiles').select('death_cause, death_date, death_date_unknown').eq('id', ghost.id).single()).data;
+  ok(seen?.death_date === '2026-10-01' && seen.death_cause.startsWith('Fell to a giant') && seen.death_date_unknown === false, 'every member reads it');
+  const unk = await gorza.rpc('set_death_record', { p_id: ghost.id, p_cause: 'Lost in Blackreach.', p_date: '2026-10-01', p_unknown: true });
+  ok(unk.data?.death_date === null && unk.data.death_date_unknown === true, 'a date marked unknown replaces any date');
+  const blank = await gorza.rpc('set_death_record', { p_id: ghost.id, p_cause: '', p_date: null, p_unknown: false });
+  ok(blank.data?.death_date === null && blank.data.death_date_unknown === false && blank.data.death_cause === '', 'and both can be emptied again');
+  ok((await ugak.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x', p_date: null, p_unknown: false })).error, 'a member cannot record a death');
+  ok((await ghostSelf.rpc('set_death_record', { p_id: ghost.id, p_cause: 'I got better', p_date: null, p_unknown: false })).error, 'nor can the fallen write their own');
+  ok((await sharn.rpc('set_death_record', { p_id: ugak.me, p_cause: 'x', p_date: null, p_unknown: false })).error?.message.includes('Deceased tag'), 'a living member has no death to record');
+  const tomorrow = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+  ok((await sharn.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x', p_date: tomorrow, p_unknown: false })).error, 'a date in the future is refused');
+  ok((await sharn.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x'.repeat(501), p_date: null, p_unknown: false })).error, 'a cause over 500 characters is refused');
+  ok((await sharn.rpc('set_death_record', { p_id: '00000000-0000-4000-8000-000000000000', p_cause: 'x', p_date: null, p_unknown: false })).error, 'a member who does not exist is refused');
+  ok((await guest.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x', p_date: null, p_unknown: false })).error, 'guests are refused');
+  // the same reach as the rest of an account
+  const made = await nick.api('admin.create', { username: 'Oldsmith', display_name: 'Oldsmith', tags: ['forgemaster', 'deceased'] });
+  ok((await sharn.rpc('set_death_record', { p_id: made.data.profile.id, p_cause: 'x', p_date: null, p_unknown: false })).error?.message.includes('Forgemaster'), "an officer cannot write a fallen Forgemaster's record");
+  ok(!(await nick.rpc('set_death_record', { p_id: made.data.profile.id, p_cause: 'The forge went cold.', p_date: null, p_unknown: true })).error, 'a Forgemaster can');
+  ok((await nick.from('audit_log').select('*').eq('action', 'member.death_recorded')).data.length >= 4, 'each record is written to the audit log');
+  // the fallen keep their account: the card still saves, the app still opens
+  ok(!(await ghostSelf.rpc('update_my_profile', { p_display_name: 'Ghost of Largashbur' })).error, 'a fallen member still changes their own name');
+  ok((await ghostSelf.from('announcements').select('id')).error === null, 'and still reads the notice board');
+  ok(!(await nick.api('admin.update', { id: ghost.id, tags: ['kinsmen'] })).error && (await nick.rpc('member_admin_list')).data.find((m) => m.id === ghost.id).tags.join() === 'kinsmen', 'taking the Deceased tag away brings them back');
+}
+
+console.log('0.2.5: roles');
+{
+  const first = await ugak.from('role_notes').select('*');
+  ok(!first.error && first.data.length === 0, 'members read the role descriptions (none written yet)');
+  ok(!(await sharn.from('role_notes').upsert({ tag: 'blooded', about: "Sworn, proven in battle, and trusted with the clan's steel." })).error, 'an officer writes a description');
+  const rn = (await velyn.from('role_notes').select('*')).data;
+  ok(rn.length === 1 && rn[0].tag === 'blooded' && rn[0].updated_by === sharn.me, 'every member reads it, and who wrote it is recorded');
+  ok(!(await gorza.from('role_notes').upsert({ tag: 'blooded', about: 'Proven.' })).error && (await ugak.from('role_notes').select('*')).data[0].about === 'Proven.' && (await ugak.from('role_notes').select('*')).data[0].updated_by === gorza.me, 'another officer rewrites it');
+  ok((await ugak.from('role_notes').upsert({ tag: 'ally', about: 'x' })).error, 'a member cannot write one');
+  ok((await ugak.from('role_notes').update({ about: 'hacked' }).eq('tag', 'blooded').select()).data.length === 0, 'nor change one');
+  ok((await ugak.from('role_notes').delete().eq('tag', 'blooded').select()).data.length === 0, 'nor remove one');
+  ok((await sharn.from('role_notes').upsert({ tag: 'daedric', about: 'x' })).error, 'only real tags have a description');
+  ok((await sharn.from('role_notes').upsert({ tag: 'ally', about: 'x'.repeat(401) })).error, 'a description over 400 characters is refused');
+  ok((await sharn.from('role_notes').upsert({ tag: 'ally', about: '   ' })).error, 'a blank description is refused');
+  ok((await gorza.from('role_notes').delete().eq('tag', 'blooded').select()).data.length === 1 && (await ugak.from('role_notes').select('*')).data.length === 0, 'an officer hands a description back to the app');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

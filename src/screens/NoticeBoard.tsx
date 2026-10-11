@@ -37,30 +37,47 @@ function EntryEditor({ entry, onClose, onSaved }: { entry: ChangelogEntry | null
 function Changelog({ canEdit, adding, onAddDone }: { canEdit: boolean; adding: boolean; onAddDone: () => void }) {
   const [rows, setRows] = useState<ChangelogEntry[] | null>(null);
   const [editing, setEditing] = useState<ChangelogEntry | null>(null); const [removing, setRemoving] = useState<ChangelogEntry | null>(null);
+  // Entries fold shut. Until someone folds or unfolds one, only the newest is open.
+  const [opened, setOpened] = useState<Set<string> | null>(null);
   const load = useCallback(async () => {
     const { data } = await supabase.from('changelog').select('*').order('released_at', { ascending: false }).order('created_at', { ascending: false });
     setRows((data ?? []) as ChangelogEntry[]);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  const isOpen = (id: string, i: number) => (opened ? opened.has(id) : i === 0);
+  const toggle = (id: string) => setOpened((was) => {
+    const next = new Set(was ?? (rows?.length ? [rows[0].id] : []));
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   return (
     <>
       {!rows && <p className="empty">Reading the log…</p>}
       {rows?.length === 0 && <p className="empty">Nothing has been logged yet.</p>}
-      <ol className="log">
-        {rows?.map((r) => (
-          <li key={r.id} className="log__row">
-            <div className="log__when">{r.version && <strong>{r.version}</strong>}<span>{new Date(r.released_at + 'T12:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span></div>
-            <div>
-              <h2 className="log__title">{r.title}</h2>
-              {r.body.split(/\n{2,}/).filter(Boolean).map((p, i) => <p key={i} className="log__body">{p}</p>)}
-              {canEdit && <div className="row" style={{ marginTop: 8 }}>
-                <button className="btn btn--small" onClick={() => setEditing(r)}>Edit</button>
-                <button className="btn btn--small" onClick={() => setRemoving(r)}>Remove</button>
+      {rows && rows.length > 0 && <ol className="log">
+        {rows.map((r, i) => {
+          const on = isOpen(r.id, i);
+          return (
+            <li key={r.id} className={`log__row ${on ? 'is-open' : ''}`}>
+              <h2 className="log__h">
+                <button className="log__head" aria-expanded={on} aria-controls={`log-${r.id}`} onClick={() => toggle(r.id)}>
+                  <span className="log__when">{r.version && <strong>{r.version}</strong>}<span>{new Date(r.released_at + 'T12:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span></span>
+                  <span className="log__title">{r.title}</span>
+                  <span className="log__chev" aria-hidden="true" />
+                </button>
+              </h2>
+              {on && <div className="log__more" id={`log-${r.id}`}>
+                {r.body.split(/\n{2,}/).filter(Boolean).map((p, j) => <p key={j} className="log__body">{p}</p>)}
+                {!r.body.trim() && <p className="log__body muted">No details were written for this entry.</p>}
+                {canEdit && <div className="row" style={{ marginTop: 10 }}>
+                  <button className="btn btn--small" onClick={() => setEditing(r)}>Edit</button>
+                  <button className="btn btn--small" onClick={() => setRemoving(r)}>Remove</button>
+                </div>}
               </div>}
-            </div>
-          </li>
-        ))}
-      </ol>
+            </li>
+          );
+        })}
+      </ol>}
       {(adding || editing) && <EntryEditor entry={editing} onClose={() => { setEditing(null); onAddDone(); }} onSaved={load} />}
       {removing && <Confirm title="Remove this entry" action="Remove" danger onClose={() => setRemoving(null)}
         onConfirm={async () => { await supabase.from('changelog').delete().eq('id', removing.id); setRemoving(null); void load(); }}>

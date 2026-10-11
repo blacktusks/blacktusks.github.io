@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { APP_VERSION } from '../config';
 import { useAuth } from '../lib/auth';
@@ -6,11 +6,16 @@ import { Banner, Scene } from '../components/Scene';
 import { Modal, Tags } from '../components/ui';
 import { splashHold, splashPass } from '../lib/splash';
 
+// The member's own card is only fetched when Profile is first opened.
+const ProfileCard = lazy(() => import('../components/MemberCard'));
+
 const MEMBER_MENU: [string, string][] = [
   ['Code of Mauloch', '/code'],
   ['Notice Board', '/notices'],
   ['Black Tusk Oath', '/oath'],
   ['Members', '/members'],
+  ['Deceased', '/deceased'],
+  ['Roles', '/roles'],
   ['Mine of the Black Tusks', '/mine'],
   ['Expansion Goals', '/expansion'],
   ['Mining Map', '/map'],
@@ -39,7 +44,7 @@ export default function MainMenu() {
   const { profile, signOut } = useAuth();
   const go = useNavigate();
   const nav = useRef<HTMLUListElement>(null);
-  const [install, setInstall] = useState(false);
+  const [install, setInstall] = useState(false); const [card, setCard] = useState(false);
   useEffect(() => { document.title = 'Black Tusk Companion'; }, []);
   // On the way in, the loading screen also waits for the picture behind the menu and for the banner.
   useState(() => { splashHold('menu-scene'); splashHold('menu-banner'); return 0; });
@@ -54,7 +59,7 @@ export default function MainMenu() {
   };
 
   const items: [string, () => void, boolean?][] = profile
-    ? [['Sign Out', () => { void signOut(); }, true], ...MEMBER_MENU.map(([label, to]) => [label, () => go(to)] as [string, () => void])]
+    ? [['Sign Out', () => { void signOut(); }, true], ['Profile', () => setCard(true)], ...MEMBER_MENU.map(([label, to]) => [label, () => go(to)] as [string, () => void])]
     : [['Sign In', () => go('/sign-in')], ['Code of Mauloch', () => go('/code')]];
 
   return (
@@ -63,7 +68,8 @@ export default function MainMenu() {
       <div className="menu">
         <div className="menu__banner"><Banner onReady={() => splashPass('menu-banner')} /></div>
         <div className="menu__side">
-          <ul className="menu__nav" ref={nav} onKeyDown={onKey} aria-label="Main menu">
+          {/* the list sizes itself by how many lines it holds, so a longer list still fits the screen */}
+          <ul className="menu__nav" ref={nav} onKeyDown={onKey} aria-label="Main menu" style={{ ['--n' as any]: items.length }}>
             {items.map(([label, act, quiet]) => (
               <li key={label}><button className={`menu__item ${quiet ? 'menu__item--quiet' : ''}`} onClick={act}>{label}</button></li>
             ))}
@@ -78,6 +84,7 @@ export default function MainMenu() {
         </div>
       </div>
       {install && <InstallHelp onClose={() => setInstall(false)} />}
+      {card && profile && <Suspense fallback={null}><ProfileCard onClose={() => setCard(false)} /></Suspense>}
     </>
   );
 }

@@ -389,7 +389,7 @@ export async function start() {
   await seedUser('ugak', 'Ugak', ['blooded']);
   await seedUser('sharn', 'Sharn', ['wise_woman']);
   await seedUser('velyn', 'Velyn of the Rift', ['ally']);
-  await seedUser('sheo', 'Sheogorath', ['daedric']);
+  await seedUser('yatul', 'Yatul', ['left_tusk']);
   await new Promise((ok) => server.listen(PORT, ok));
   return { url: `http://localhost:${PORT}`, anonKey: ANON_KEY, serviceKey: SERVICE_KEY };
 }
@@ -398,5 +398,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log('dev backend on', info.url);
   console.log('VITE_SUPABASE_URL=' + info.url);
   console.log('VITE_SUPABASE_ANON_KEY=' + info.anonKey);
-  console.log('accounts: nick, gorza, ugak, sharn, velyn, sheo   password: TestPass123');
+  console.log('accounts: nick, gorza, ugak, sharn, velyn, yatul   password: TestPass123');
 }

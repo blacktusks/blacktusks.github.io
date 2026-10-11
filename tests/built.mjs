@@ -43,7 +43,7 @@ const sw = await page.evaluate(async () => { const r = await navigator.serviceWo
 ok(sw.endsWith(PREFIX), 'the service worker registers for the sub-path', sw);
 ok(await page.evaluate(() => document.fonts.ready.then(() => document.fonts.check('300 20px "Antonio Variable"'))), 'the menu font loads');
 await page.goto(base + '#/sign-in'); await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click();
-await page.waitForSelector('.menu__nav'); ok((await page.locator('.menu__item').count()) === 9, 'sign-in works in the built app');
+await page.waitForSelector('.menu__nav'); ok((await page.locator('.menu__item').count()) === 12, 'sign-in works in the built app');
 await page.goto(base + '#/map'); await page.waitForTimeout(2500); ok((await page.locator('.leaflet-tile-loaded').count()) > 3, 'map tiles load from the sub-path');
 await page.goto(base + '#/ledger'); await page.waitForSelector('.lrow', { timeout: 10000 }); ok((await page.locator('.lrow').count()) > 5, 'the item catalog loads from the sub-path');
 // offline: the shell and the lore still open

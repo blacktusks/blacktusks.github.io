@@ -14,15 +14,18 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | --- | --- |
 | Code of Mauloch | Fixed text. Open to guests. |
 | Black Tusk Oath | Fixed text, with the member's own name in it, bold and with a light passing over it. |
-| Notice Board: announcements | Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster, Daedric. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
-| Notice Board: change log | Forgemaster only. |
+| Notice Board: announcements | Officers: Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
+| Notice Board: change log | Forgemaster only. Each entry folds shut; the newest starts open. |
 | Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone (the card says so). Every card opens as members see it; an Edit button, shown only to those allowed, opens the form. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags, and can set another member's masteries (not their bio or hours). Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
+| Profile | The member's own card, straight from the main menu: the same pop-up as their name on the Members screen. |
+| Deceased | The same list as Members, over the members who carry the Deceased tag (they are listed here and not under Members). A fallen card has no bio and no hours; it carries a cause of death and a date of passing, both written by officers. The date is empty until one is entered, or reads UNKNOWN. |
+| Roles | A short description of every tag. Officers can put the clan's own words in place of any of them. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
 | Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
-| Mining Map | Any member pings an ore vein. Officers and Daedric approve or deny pings; their own markers go straight on the map. |
-| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. On a phone, an open item can be swiped left or right (or stepped with the arrows above its picture) to the next or previous item in the list. |
+| Mining Map | Any member pings an ore vein. Officers approve or deny pings; their own markers go straight on the map. |
+| Pricing Ledger | Officers set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. On a phone, an open item can be swiped left or right (or stepped with the arrows above its picture) to the next or previous item in the list. |
 
-Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag and keeps full access.
+Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag: they keep their account and full access, and move from the Members screen to the Deceased screen.
 
 ## How it is put together
 
@@ -36,7 +39,7 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
 
 1. Create a project at supabase.com (free plan).
-2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0004_...`). They are safe to re-run.
+2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0005_...`). They are safe to re-run.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
 4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
 5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
@@ -85,13 +88,13 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 264 permission checks against real Postgres rules
-node tests/e2e.mjs       # 112 browser checks of every screen and role
+node tests/api.mjs       # 289 permission checks against real Postgres rules
+node tests/e2e.mjs       # 177 browser checks of every screen and role
 node tests/look_fit.mjs  # the main menu at 27 screen sizes: nothing off-screen, overlapping or scrolling
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```
 
-The local backend (`dev/server.mjs`) runs the real migration and the real function against an in-process Postgres, so the permission rules under test are the ones that ship. Test accounts: `nick`, `gorza`, `ugak`, `sharn`, `velyn`, `sheo`, password `TestPass123`.
+The local backend (`dev/server.mjs`) runs the real migration and the real function against an in-process Postgres, so the permission rules under test are the ones that ship. Test accounts: `nick`, `gorza`, `ugak`, `sharn`, `velyn`, `yatul`, password `TestPass123`.
 
 ## Rebuilding the game data
 
