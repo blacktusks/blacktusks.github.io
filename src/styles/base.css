@@ -212,8 +212,15 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .panel__title { font: 400 19px/1.2 var(--ui); letter-spacing: 0.12em; text-transform: uppercase; color: #fff; }
 .panel__body { padding: 14px 16px; }
 
-.modal { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 50; display: grid; place-items: center; padding: 14px; background: rgba(0, 0, 0, 0.74); overflow-y: auto; animation: fade 0.16s ease; }
-.modal__box { width: min(560px, 100%); border: 1px solid var(--line); background: rgba(6, 5, 4, 0.96); box-shadow: 0 30px 80px #000; margin: auto; }
+/* A pop-up sits in the middle of the screen when it fits. When it is taller than the screen (an officer editing a
+   member's card) it starts at the top, clear of the status bar, and the whole pop-up scrolls: "margin: auto" inside a
+   flex box does exactly that, where plain centring would push its top off the screen out of reach. The page behind
+   holds still meanwhile (html.has-modal, set by the Modal component). */
+.modal { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 50; display: flex;
+  padding: max(14px, calc(var(--safe-t) + 12px)) 14px max(14px, calc(var(--safe-b) + 12px)); background: rgba(0, 0, 0, 0.74);
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; animation: fade 0.16s ease; }
+.modal__box { flex: 0 0 auto; width: min(560px, 100%); border: 1px solid var(--line); background: rgba(6, 5, 4, 0.96); box-shadow: 0 30px 80px #000; margin: auto; }
+html.has-modal, html.has-modal body { overflow: hidden; }
 .modal__box--wide { width: min(760px, 100%); }
 .modal__head { padding: 16px 20px 12px; text-align: center; font: 300 24px/1.15 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: #fff; border-bottom: 1px solid var(--line-2); }
 .modal__body { padding: 16px 20px; }

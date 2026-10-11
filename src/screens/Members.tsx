@@ -14,7 +14,7 @@ interface Presence { configured: boolean; ok?: boolean; reason?: string; server?
 type Status = 'realm' | 'discord' | 'offline' | 'unknown';
 const STATUS: Record<Status, [string, string]> = {
   realm: ['In the realm', 'Discord shows them playing Skyrim right now.'],
-  discord: ['In Discord', 'Online in Discord, not in the game.'],
+  discord: ['In Discord', 'Online in Discord, not in the realm.'],
   offline: ['Offline', 'Not online in Discord.'],
   unknown: ['', ''],
 };
@@ -29,8 +29,11 @@ function statusOf(p: Profile, presence: Presence | null): { status: Status; game
   const hit = presence.members.find((m) => norm(m.name) === discordKey(p));
   if (!hit) return { status: 'offline' };
   if (hit.game && /skyrim|daedric online/i.test(hit.game)) return { status: 'realm', game: hit.game };
-  return { status: 'discord', game: hit.game ?? undefined };
+  return { status: 'discord' };          // whatever else they are playing is their own business
 }
+/** Online first: in the realm, then in Discord or on the app, then everyone else. */
+const onlineRank = (st: Status, onApp: boolean) => (st === 'realm' ? 0 : st === 'discord' || onApp ? 1 : 2);
+const ON_APP = 'Has the companion app open right now.';
 
 function TagPicker({ value, onChange, mine }: { value: string[]; onChange: (t: string[]) => void; mine: string[] }) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id]);
@@ -150,8 +153,8 @@ function AddMember({ mine, onClose, onAdded }: { mine: string[]; onClose: () => 
   );
 }
 
-function MemberCard({ member, me, presence, onClose, onChanged }: {
-  member: Profile; me: Profile; presence: Presence | null; onClose: () => void; onChanged: () => void;
+function MemberCard({ member, me, presence, onApp, onClose, onChanged }: {
+  member: Profile; me: Profile; presence: Presence | null; onApp: boolean; onClose: () => void; onChanged: () => void;
 }) {
   const { reload } = useAuth();
   const self = member.id === me.id;
@@ -209,7 +212,10 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
   const top = (
     <div className="member__top">
       <Tags tags={member.tags} />
-      {st.status !== 'unknown' && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}{st.game && st.status === 'discord' ? ` (${st.game})` : ''}</span>}
+      <span className="roster__status">
+        {st.status !== 'unknown' && !(onApp && st.status === 'offline') && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}</span>}
+        {onApp && <span className="presence presence--app" title={ON_APP}>On the app</span>}
+      </span>
     </div>
   );
   if (!editing) {
@@ -336,6 +342,7 @@ export default function Members() {
   const { profile } = useAuth(); const me = profile!; const officer = isOfficer(me.tags);
   const [members, setMembers] = useState<Profile[] | null>(null);
   const [presence, setPresence] = useState<Presence | null>(null);
+  const [onApp, setOnApp] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null); const [adding, setAdding] = useState(false); const [discord, setDiscord] = useState(false);
   const [error, setError] = useState('');
 
@@ -344,16 +351,24 @@ export default function Members() {
     const { data, error } = officer ? await supabase.rpc('member_admin_list') : await supabase.from('profiles').select(PROFILE_COLUMNS);
     if (error) setError('Could not load the members. Check your connection and try again.'); else { setError(''); setMembers(data as Profile[]); }
   }, [officer]);
-  const loadPresence = useCallback(() => { api<Presence>('discord.presence').then(setPresence).catch(() => setPresence(null)); }, []);
-  useEffect(() => { void load(); loadPresence(); const t = setInterval(loadPresence, 60000); return () => clearInterval(t); }, [load, loadPresence]);
+  const loadPresence = useCallback(() => {
+    api<Presence>('discord.presence').then(setPresence).catch(() => setPresence(null));
+    // who has the app itself open (you always do, or you would not be reading this)
+    supabase.rpc('app_online').then(({ data, error }) => { if (!error) setOnApp(new Set([...((data as string[] | null) ?? []), me.id])); }, () => undefined);
+  }, [me.id]);
+  useEffect(() => { void load(); loadPresence(); const t = setInterval(loadPresence, 30000); return () => clearInterval(t); }, [load, loadPresence]);
 
-  const sorted = useMemo(() => [...(members ?? [])].sort((a, b) => standing(a.tags) - standing(b.tags) || a.display_name.localeCompare(b.display_name)), [members]);
+  // Whoever is about comes first: in the realm, then in Discord or on the app, then the rest. Within each, by standing, then name.
+  const sorted = useMemo(() => [...(members ?? [])].sort((a, b) =>
+    onlineRank(statusOf(a, presence).status, onApp.has(a.id)) - onlineRank(statusOf(b, presence).status, onApp.has(b.id))
+    || standing(a.tags) - standing(b.tags) || a.display_name.localeCompare(b.display_name)), [members, presence, onApp]);
   const inRealm = sorted.filter((m) => statusOf(m, presence).status === 'realm').length;
+  const appCount = sorted.filter((m) => onApp.has(m.id)).length;
   const current = sorted.find((m) => m.id === open);
   const live = presence?.configured && presence.ok !== false;
 
   return (
-    <Page title="Members" sub={members ? `${members.length} by the fire${live ? `, ${inRealm} in the realm now` : ''}` : undefined}
+    <Page title="Members" sub={members ? `${members.length} by the fire${live ? `, ${inRealm} in the realm now` : ''}${appCount ? `, ${appCount} on the app` : ''}` : undefined}
       bar={<>
         {isForgemaster(me.tags) && <button className="btn" onClick={() => setDiscord(true)}>Discord link</button>}
         {isOfficer(me.tags) && <button className="btn btn--go" onClick={() => setAdding(true)}>Add member</button>}
@@ -363,15 +378,19 @@ export default function Members() {
       {members && (
         <ul className="roster">
           {sorted.map((m) => {
-            const st = statusOf(m, presence);
+            const st = statusOf(m, presence); const here = onApp.has(m.id);
             return (
               <li key={m.id}>
                 <button className={`roster__row ${m.tags.includes('deceased') ? 'is-fallen' : ''}`} onClick={() => setOpen(m.id)}>
-                  <span className={`dot dot--${st.status}`} aria-hidden="true" />
+                  <span className={`dot dot--${st.status} ${here ? 'dot--app' : ''}`} aria-hidden="true" />
                   <span className="roster__name">{m.display_name}{m.id === me.id && <em> (you)</em>}</span>
                   <span className="roster__tags"><span className="tags">{sortTags(m.tags).map((t) => <span key={t} className="tag" style={{ ['--c' as any]: TAGS.find((x) => x.id === t)?.color }}>{TAGS.find((x) => x.id === t)?.label}</span>)}</span>
                     <Masteries list={cleanMasteries(m.masteries)} mini /></span>
-                  {st.status !== 'unknown' && <span className={`presence presence--${st.status}`}>{STATUS[st.status][0]}</span>}
+                  <span className="roster__status">
+                    {/* someone with the app open is not "offline", whatever Discord says */}
+                    {st.status !== 'unknown' && !(here && st.status === 'offline') && <span className={`presence presence--${st.status}`}>{STATUS[st.status][0]}</span>}
+                    {here && <span className="presence presence--app" title={ON_APP}>On the app</span>}
+                  </span>
                 </button>
               </li>
             );
@@ -381,7 +400,7 @@ export default function Members() {
       {members && !live && <p className="hint" style={{ textAlign: 'center', marginTop: 18 }}>
         {presence?.configured ? presence.reason : isForgemaster(me.tags) ? 'Online status is off until the clan Discord is linked. Use Discord link below.' : 'Online status appears here once the Forgemaster links the clan Discord.'}
       </p>}
-      {current && <MemberCard key={current.id} member={current} me={me} presence={presence} onClose={() => setOpen(null)} onChanged={load} />}
+      {current && <MemberCard key={current.id} member={current} me={me} presence={presence} onApp={onApp.has(current.id)} onClose={() => setOpen(null)} onChanged={load} />}
       {adding && <AddMember mine={me.tags} onClose={() => setAdding(false)} onAdded={load} />}
       {discord && <DiscordSetup presence={presence} members={members ?? []} onClose={() => setDiscord(false)} onSaved={loadPresence} />}
     </Page>

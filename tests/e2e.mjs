@@ -178,7 +178,8 @@ ok((await nick.textContent('.board')).includes('Comes down in 1 days') || (await
 await go(ugak, '/notices', 800);
 ok((await ugak.locator('.paper').count()) === 2 && !(await has(ugak, 'button', 'Post a notice')) && !(await has(ugak, 'button', 'Edit')), 'Ugak sees both and cannot post or edit');
 const velyn = await user('velyn'); await go(velyn, '/notices', 800);
-ok((await velyn.locator('.paper').count()) === 1, 'Velyn only sees the notice for everyone');
+await velyn.waitForSelector('.paper', { timeout: 15000 }).catch(() => undefined); await velyn.waitForTimeout(400);
+ok((await velyn.locator('.paper').count()) === 1, 'Velyn only sees the notice for everyone', `saw ${await velyn.locator('.paper').count()}: ${(await velyn.locator('.paper').allTextContents()).join(' / ').slice(0, 200)}`);
 await nick.locator('.paper', { hasText: 'For Ugak alone' }).getByRole('button', { name: 'Remove' }).click(); await nick.locator('.modal').getByRole('button', { name: 'Remove' }).click(); await nick.waitForTimeout(600);
 ok((await nick.locator('.paper').count()) === 1, 'an officer removes a notice');
 await nick.getByRole('tab', { name: 'Change log' }).click(); await nick.waitForTimeout(400);
@@ -300,15 +301,51 @@ console.log('discord status');
   const row = async (name) => (await nick.locator('.roster__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
   ok((await row('Gorza gra-Largash')).includes('In the realm'), 'a member is found in Discord by their own name, with no Discord name on their profile', await row('Gorza gra-Largash'));
   ok((await row('Velyn of the Rift')).includes('In Discord'), 'someone online but not in the game reads as in Discord');
-  ok((await row('Ugak')).includes('Offline') && !(await nick.locator('.roster').textContent()).includes('Not linked'), 'everyone else reads as offline; nobody is "not linked" any more');
+  // Durak signed in once long ago and closed the app, so he is neither in Discord nor on the app
+  ok((await row('Durak Iron-Jaw')).includes('Offline') && !(await nick.locator('.roster').textContent()).includes('Not linked'), 'everyone else reads as offline; nobody is "not linked" any more', await row('Durak Iron-Jaw'));
   ok((await nick.locator('.page__sub').textContent()).includes('1 in the realm now'), 'the heading counts who is in the realm');
+
+  // someone in Discord playing another game is simply "In Discord"; who is about comes first; and the app itself is seen
+  t.backend.discordStub.body.members[1] = { id: '1', username: 'Velyn of the Rift', discriminator: '0000', status: 'online', game: { name: 'Rocket League' } };
+  const sharn = await user('sharn'); await sharn.waitForTimeout(600);                 // Sharn opens the app
+  await go(nick, '/', 200); await go(nick, '/members', 1400);
+  await nick.waitForFunction(() => document.querySelectorAll('.presence--app').length >= 2, null, { timeout: 50000 }).catch(() => undefined);
+  const order = (await nick.locator('.roster__row').evaluateAll((rows) => rows.map((r) => r.querySelector('.roster__name').textContent.replace(/\s*\(you\)/, '') + '=' + [...r.querySelectorAll('.presence')].map((x) => x.textContent).join('+'))));
+  ok(order[0].startsWith('Gorza gra-Largash=In the realm'), 'whoever is in the realm heads the list', order.join(' | '));
+  const lastOn = Math.max(...order.map((o, i) => (/In the realm|In Discord|On the app/.test(o) ? i : -1))), firstOff = order.findIndex((o) => !/In the realm|In Discord|On the app/.test(o));
+  ok(firstOff < 0 || lastOn < firstOff, 'everyone who is about comes before everyone who is not', order.join(' | '));
+  ok(order.some((o) => /^Nick=.*On the app/.test(o)) && order.some((o) => /^Sharn=.*On the app/.test(o)) && !order.some((o) => /^Durak Iron-Jaw=.*On the app/.test(o)), 'members with the app open are marked "On the app", and one who has never opened it is not', order.join(' | '));
+  ok(/on the app/.test(await nick.locator('.page__sub').textContent()), 'and the heading counts them', await nick.locator('.page__sub').textContent());
+  await nick.locator('.roster__row', { hasText: 'Velyn of the Rift' }).click(); await nick.waitForSelector('.modal');
+  const seen = (await nick.locator('.modal').textContent());
+  ok(seen.includes('In Discord') && !seen.includes('Rocket League'), 'a member\'s card says In Discord without naming a game that is not Skyrim', seen.slice(0, 160));
+  await nick.locator('.modal').getByRole('button', { name: 'Close' }).click();
+  await sharn.getByRole('button', { name: 'Sign Out' }).click(); await sharn.waitForTimeout(700); await sharn.context().close();
+  await go(nick, '/', 200); await go(nick, '/members', 1400);
+  ok(!(await nick.locator('.roster__row', { hasText: 'Sharn' }).textContent()).includes('On the app'), 'signing out takes a member off the list at once');
+}
+
+console.log('pop-ups');
+{ // an officer's edit form is taller than a small screen: it must start below the top and scroll all the way
+  await nick.setViewportSize({ width: 390, height: 620 });
+  await go(nick, '/members', 900);
+  await nick.locator('.roster__row', { hasText: 'Ugak' }).click(); await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click(); await nick.waitForTimeout(400);
+  const m = await nick.evaluate(() => { const o = document.querySelector('.modal'), b = o.querySelector('.modal__box'); o.scrollTop = 0; const top = b.getBoundingClientRect().top; o.scrollTop = o.scrollHeight; const bottom = b.getBoundingClientRect().bottom;
+    return { top, bottom, tall: b.getBoundingClientRect().height > window.innerHeight, h: window.innerHeight, lock: getComputedStyle(document.documentElement).overflowY }; });
+  ok(m.tall && m.top >= 12, 'a pop-up taller than the screen starts below the top of the screen, not above it', JSON.stringify(m));
+  ok(m.bottom <= m.h - 12 + 1, 'and scrolls all the way to its last button', JSON.stringify(m));
+  ok(m.lock === 'hidden', 'while it is open the page behind does not scroll');
+  await nick.evaluate(() => { document.querySelector('.modal').scrollTop = 0; });
+  await nick.keyboard.press('Escape'); await nick.waitForTimeout(300);
+  ok(await nick.evaluate(() => !document.querySelector('.modal') && !document.documentElement.classList.contains('has-modal')), 'closing it lets the page scroll again');
+  await nick.setViewportSize({ width: 1440, height: 900 });
 }
 
 console.log('pricing ledger');
 await velyn.context().close(); await go(nick, '/code', 300);
 await go(ugak, '/ledger', 1800);
 ok((await ugak.title()) === 'Pricing Ledger | Black Tusk Companion', 'the ledger names its browser tab', await ugak.title());
-ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 4000, 'the ledger lists thousands of items');
+ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 3500, 'the ledger lists thousands of items');
 ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no Keys section');
 { // the Misc section after the clan's trims
   await ugak.getByRole('button', { name: 'Misc', exact: true }).click(); await ugak.waitForTimeout(500);
@@ -334,9 +371,14 @@ ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no
   const smith = await named("blacksmith's");
   ok(smith.length > 0 && !smith.some((n) => /Potion|Draught|Philter|Elixir/.test(n)), "the Blacksmith's potions are gone", smith.join('|'));
   ok(!(await named('krosis')).includes('Krosis') && (await named('wooden mask')).length === 0 && !(await named('miraak')).includes('Miraak'), 'the dragon priest masks are gone');
-  ok((await named('krosis')).some((n) => /Krosis' (Armor|Robes)/.test(n)), "the armor sets named after the priests stay");
+  const worn = [...await named('krosis'), ...await named("miraak's"), ...await named("vahlok's")].filter((n) => /(Armor|Robes|Boots|Gloves|Gauntlets|Bracers)$/.test(n));
+  ok(worn.length === 0, 'and so are the armor sets named after the priests', worn.join('|'));
+  ok((await named('spider')).every((n) => !/Spider$/.test(n) || /Tome/.test(n)) && !(await named('spider')).includes('Jumping Flame Spider'), 'the spiders are gone from the scrolls', (await named('spider')).join('|'));
+  ok((await named('glacier water')).length + (await named('orc skull')).length + (await named('snowelf')).length + (await named('windhelm homebrew')).length === 0, 'the items that had no picture are gone');
   await named('daedric nodachi'); await ugak.locator('.lrow', { hasText: 'Daedric Nodachi' }).first().click(); await ugak.waitForTimeout(500);
   ok(!/Improved at|grindstone|workbench/i.test(await ugak.locator('.ledger__card').textContent()), 'no weapon or armor improvement note on an item');
+  ok(await ugak.evaluate(() => { const p = document.querySelector('.ledger__card').getBoundingClientRect(), c = document.querySelector('.icard__swipe').getBoundingClientRect(); return c.height < p.height && Math.abs((c.top + c.bottom) / 2 - (p.top + p.bottom) / 2) < 16; }),
+    'on a desktop the open item sits in the middle of its panel');
   ok(/\.webp\?v=[0-9a-f]{6}$/.test(await ugak.locator('.icard__view img').getAttribute('src')), "a picture's address carries a stamp of its contents", await ugak.locator('.icard__view img').getAttribute('src'));
 }
 await ugak.getByLabel('Filter by name').fill('iron ingot'); await ugak.waitForTimeout(400); await ugak.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await ugak.waitForTimeout(500);

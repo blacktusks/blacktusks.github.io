@@ -18,6 +18,11 @@
 .presence { font: 400 14px/1.2 var(--ui); letter-spacing: 0.08em; color: var(--bone-2); white-space: nowrap; }
 .presence--realm { color: var(--ember-hot); }
 .presence--discord { color: #a9c0d6; }
+/* "On the app": the member has the companion itself open right now. */
+.presence--app { color: #e9c98a; }
+.presence--app::before { content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 1px; background: #e9c98a; transform: rotate(45deg); box-shadow: 0 0 6px rgba(233, 201, 138, 0.7); }
+.roster__status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; justify-self: end; }
+.dot--app { outline: 1px solid #e9c98a; outline-offset: 2px; }
 .member__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .tagpick { display: flex; flex-wrap: wrap; gap: 7px; }
 .tagpick__one {
@@ -35,7 +40,7 @@
 @media (max-width: 640px) {
   .roster__row { grid-template-columns: 14px minmax(0, 1fr) auto; }
   .roster__tags { grid-column: 2 / -1; grid-row: 2; }
-  .roster__row .presence { grid-column: 3; grid-row: 1; }
+  .roster__row .roster__status { grid-column: 3; grid-row: 1; }
 }
 /* ── boards: parchment pinned to dark wood ── */
 .tabs { display: flex; justify-content: center; gap: 4px; margin: -4px 0 20px; }
@@ -209,8 +214,9 @@
 
 .ledger__card { min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; padding: clamp(10px, 2.4vh, 26px) clamp(12px, 2.6vw, 40px) 16px;
   touch-action: pan-y; overscroll-behavior-x: none; }
+.ledger__card > .empty { margin: auto; }
 /* The open item: one piece, so a sideways swipe on a phone can carry it off and bring the next one in. */
-.icard__swipe { width: 100%; display: flex; flex-direction: column; align-items: center; }
+.icard__swipe { width: 100%; display: flex; flex-direction: column; align-items: center; margin: auto 0; }   /* in the middle of the panel; from the top once it is taller than the panel */
 .icard__swipe.is-next { animation: icard-next 0.22s ease-out; }
 .icard__swipe.is-prev { animation: icard-prev 0.22s ease-out; }
 @keyframes icard-next { from { transform: translate3d(56px, 0, 0); opacity: 0.15; } }
@@ -266,6 +272,7 @@
   .ledger.has-card .ledger__list { display: none; }
   .ledger.has-card .ledger__card { display: flex; background: rgba(0, 0, 0, 0.6); }
   .icard__pager { display: flex; }
+  .icard__swipe { margin: 0; }                    /* on a phone the card starts at the top, under the pager */
   .ledger__close { display: inline-flex; margin-left: auto; }
   .lhead, .lrow { grid-template-columns: minmax(0, 1fr) 54px 40px 84px; padding: 0 12px; }
   .lc-stat, .lc-wgt { display: none; }

@@ -300,15 +300,24 @@ def dump(name, obj):
 # Also left out: the generic enchanted variants of ordinary gear ("Iron Sword of
 # Embers" and the like). Named enchanted items such as artifacts stay.
 # And: the Blacksmith's potions (they only help with improving gear, which the realm
-# does not have) and the dragon priest masks, Miraak's and the Wooden Mask included.
-# The Armory of the Dragon Cult's armor sets named after the priests are not masks and stay.
-DROP_EDID = re.compile(r"^(FortifySkillSmithing\d|ArmorDragonPriestMask|DLC2ArmorAcolyteMask|DLC2MKMiraakMask|DLC2MiraakMask)")
+# does not have); the dragon priests' gear, which is their masks (Miraak's and the Wooden
+# Mask included), the armor sets named after them (the Armory of the Dragon Cult), Miraak's
+# own robes, boots and gloves and the four armor pieces of Ahzidal's relics; every spider in the scrolls; and the handful of
+# items that have no model in the game files, and so no picture.
+DROP_EDID = re.compile(r"^(FortifySkillSmithing\d|ArmorDragonPriestMask|DLC2ArmorAcolyteMask|DLC2MKMiraakMask|DLC2MiraakMask"
+                       r"|DPA_DragonPriest|DLC2(MK)?ClothesMiraak|DLC2MKMiraakRobes)")
+PRIEST_RELICS = {"Ahzidal's Armor of Retribution", "Ahzidal's Boots of Waterwalking", "Ahzidal's Gauntlets of Warding", "Ahzidal's Helm of Vision"}
+DROP_NAMES = {"Battle-Brew Reserve", "Battle-Brew Special", "Glacier Water", "Nord Chocolate", "Nord Rolled Cake", "Snowberry Mead",
+              "Windhelm Homebrew", "Vrage's Horn", "Argonian Skull", "Elf Skull", "Khajii Skull", "Orc Skull", "Teschio",
+              "General Tullius' Armor", "Cloaking Flame Spider", "SnowElf", "FXdustDropWEP"}
 KEEP_BOOKS = {"The Code of Malacath"}
 KEEP_TOOLS = {"Lockpick", "Linen Wrap"}
 DROP_MISC_TYPES = {"Clutter", "Dragon Claw", "Misc"}
 def unwanted(r):
     if r[9] & 1: return True
     if DROP_EDID.match(kept[r[0]].get("edid") or ""): return True
+    if r[1] in DROP_NAMES or r[1] in PRIEST_RELICS: return True
+    if r[2] == "scrolls" and "spider" in r[1].lower(): return True
     if r[2] == "keys": return True
     if r[2] == "books": return r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS
     if r[2] == "misc":

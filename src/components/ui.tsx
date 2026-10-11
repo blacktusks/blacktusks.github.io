@@ -43,6 +43,7 @@ export function Page({ title, sub, children, bar, width }: {
   );
 }
 
+let open = 0;      // pop-ups on screen (one can open another)
 export function Modal({ title, children, foot, onClose, wide }: {
   title: string; children: ReactNode; foot?: ReactNode; onClose?: () => void; wide?: boolean;
 }) {
@@ -51,6 +52,11 @@ export function Modal({ title, children, foot, onClose, wide }: {
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, [onClose]);
+  // While a pop-up is open the page behind it does not scroll; only the pop-up does.
+  useEffect(() => {
+    const root = document.documentElement; open += 1; root.classList.add('has-modal');
+    return () => { open -= 1; if (open <= 0) { open = 0; root.classList.remove('has-modal'); } };
+  }, []);
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
       <div className={`modal__box ${wide ? 'modal__box--wide' : ''}`}>

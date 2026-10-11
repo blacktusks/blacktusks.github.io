@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { LOGIN_EMAIL_DOMAIN } from '../config';
 import { stay, supabase } from './supabase';
 import type { Profile } from './types';
+import { leaveApp, startSeen, stopSeen } from './seen';
 
 interface AuthState {
   ready: boolean;
@@ -40,6 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { live = false; sub.subscription.unsubscribe(); };
   }, [load]);
 
+  // Signed in: the app says so once a minute, which is how the Members screen knows who is on the app.
+  const signedIn = !!profile;
+  useEffect(() => { if (signedIn) startSeen(); else stopSeen(); return stopSeen; }, [signedIn]);
+
   const value = useMemo<AuthState>(() => ({
     ready, profile,
     async signIn(username, password, staySignedIn = true) {
@@ -62,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await load(data?.user?.id);
     },
     // "local": signing out here leaves the member's other devices signed in.
-    async signOut() { await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined); setProfile(null); },
+    async signOut() { stopSeen(); await leaveApp(); await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined); setProfile(null); },
     async reload() { const { data } = await supabase.auth.getSession(); await load(data.session?.user.id); },
   }), [ready, profile, load]);
 
