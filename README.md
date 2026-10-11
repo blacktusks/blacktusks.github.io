@@ -16,9 +16,9 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | Black Tusk Oath | Fixed text, with the member's own name in it. |
 | Notice Board: announcements | Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster, Daedric. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
 | Notice Board: change log | Forgemaster only. |
-| Members | Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags. Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
+| Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags. Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
-| Expansion Goals | Officers edit stages and update what has been gathered. |
+| Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
 | Mining Map | Any member pings an ore vein. Officers and Daedric approve or deny pings; their own markers go straight on the map. |
 | Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. |
 
@@ -35,7 +35,7 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
 
 1. Create a project at supabase.com (free plan).
-2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...`, then `0002_...`). They are safe to re-run.
+2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...`, `0002_...`, `0003_...`). They are safe to re-run.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
 4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
 5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
@@ -66,7 +66,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 - **Add a member**: Members > Add member. The app shows a temporary password once; the member must choose their own at first sign-in.
 - **Forgotten password**: the Forgemaster opens the member in Members and uses Show current password or Set password. Every view is written to the audit log (`audit_log` table). Setting a password signs that member out on every device.
 - **Staying signed in**: with "Stay signed in" ticked on the sign-in screen, a device remembers the member until they sign out. Unticked, they are signed out when the app or tab is closed. Changing a password signs the member out everywhere else.
-- **Online status**: Members > Discord link (Forgemaster). Turn on the Server Widget in the clan Discord, paste the Server ID, and put each member's Discord name on their profile. "In the realm" means Discord shows them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim.
+- **Online status**: Members > Discord link (Forgemaster). Someone who can manage the clan Discord turns on Server Settings > Widget > Enable Server Widget and copies the Server ID from that page; the Forgemaster pastes it into the app. Each member's profile needs their Discord name exactly as the widget reports it (the Discord link panel lists the names it is currently reporting). "In the realm" means Discord shows them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim, and members who hide their activity only show as in Discord. Discord documents the names and online status in the widget but not the game being played, so that part could change without notice.
+- **New versions**: the app checks for a new build when it opens and when it comes back to the front, and switches to it by itself. If someone is in the middle of typing, a bar offers a Reload button instead.
 - **Install on a phone**: iPhone: open in Safari, Share, Add to Home Screen. Android: open in Chrome, menu, Install app.
 
 ## About passwords and safety
@@ -83,8 +84,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 232 permission checks against real Postgres rules
-node tests/e2e.mjs       # 75 browser checks of every screen and role
+node tests/api.mjs       # 250 permission checks against real Postgres rules
+node tests/e2e.mjs       # 87 browser checks of every screen and role
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```
 
@@ -114,4 +115,4 @@ The extractors only read. Paths to the game folder are at the top of `extract_ga
 - The Elder Scrolls V: Skyrim and its item names, map data and terrain belong to Bethesda Softworks.
 - Map textures come from **A Quality World Map** by IcePenguin, the map mod in the Daedric Online collection. Terrain shading and water are computed from the installed game's height data.
 - Item and recipe data includes content from the mods in the Daedric Online collection and from the server's own plugins.
-- Clan banner art and the Largashbur image were supplied by the clan.
+- Clan banner art and the Largashbur image were supplied by the clan. `tools/grade_background.py` colours the Largashbur picture to match the banner; `tools/clean_banner.py` tidies the banner cut-out.

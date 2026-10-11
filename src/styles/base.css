@@ -36,7 +36,13 @@ img { max-width: 100%; }
 /* ── scene ── */
 .scene { position: fixed; inset: 0; overflow: hidden; background: #000; z-index: 0; }
 .scene__bg { position: absolute; left: 0; top: 0; max-width: none; user-select: none; will-change: transform; }
+/* the full picture and the fire arrive together, once the picture is whole */
+.scene__bg--sharp, .scene__fireset { opacity: 0; transition: opacity 0.7s ease; }
+.scene.is-sharp .scene__bg--sharp, .scene.is-sharp .scene__fireset { opacity: 1; }
+.scene__fireset { position: absolute; inset: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .scene__bg--sharp, .scene__fireset { transition: none; } }
 .scene__fire { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
+.scene__flame { position: absolute; transform: translate(-50%, -100%); mix-blend-mode: screen; pointer-events: none; }
 /* Firelight on the ground. Overlay warms and lifts what is there, so dark stays dark. */
 .scene__firelight { position: absolute; transform: translate(-50%, -44%); pointer-events: none; mix-blend-mode: overlay; opacity: 0.8;
   background: radial-gradient(closest-side, rgba(255, 158, 84, 0.78), rgba(255, 132, 62, 0.4) 38%, rgba(255, 120, 50, 0.12) 70%, transparent); }
@@ -165,6 +171,8 @@ canvas.banner.is-ready { opacity: 1; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--bone-2) 50%), linear-gradient(135deg, var(--bone-2) 50%, transparent 50%); background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 34px !important; }
 .check { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; font-size: 17px; }
 .check input { width: 20px; height: 20px; accent-color: var(--ember); flex: none; }
+.updatebar { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px 9px 16px; border: 1px solid var(--ember); background: rgba(10, 6, 5, 0.96); font-size: 16px; box-shadow: 0 6px 26px rgba(0, 0, 0, 0.7); white-space: nowrap; }
 .check small { display: block; margin-top: 2px; font: 400 14px/1.35 var(--book); color: var(--bone-2); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row--end { justify-content: flex-end; }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // The stronghold image is 2400x1800; the campfire sits here in it.
 const IMG_W = 2400, IMG_H = 1800, FIRE_X = 0.5038, FIRE_Y = 0.5594;
@@ -27,14 +27,42 @@ function sprite(stops: [number, string][]): HTMLCanvasElement {
   return c;
 }
 
+// The flame itself is drawn by a small shader: rising noise eats at a teardrop
+// shape, so it licks and tears the way fire does instead of looking like a
+// glowing blob. Sizes are in picture pixels (the orc beside the fire is about
+// 55 tall), so the fire keeps its proportion on any screen.
+const FLAME_W = 150, FLAME_H = 156;
+const FLAME_VERT = `attribute vec2 p; varying vec2 v; void main(){ v = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+const FLAME_FRAG = `precision mediump float;
+uniform float t, flick; varying vec2 v;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
+void main(){
+  float x = (v.x - 0.5) * 2.0, y = v.y;                       // x: -1..1, y: 0 at the logs, 1 at the top
+  float billow = fbm(vec2(x * 1.7, y * 2.2 - t * 1.5));       // slow, large
+  float lick = fbm(vec2(x * 3.9 + 4.0, y * 4.4 - t * 3.0));   // fast, fine
+  float lean = (billow - 0.5) * 0.85 * y + sin(t * 0.8) * 0.06 * y;
+  float reach = 0.66 + 0.22 * flick;                          // how high this moment's flame gets
+  float width = 0.74 * pow(max(0.0, 1.0 - y / reach), 0.8) * (0.86 + 0.28 * billow);
+  float body = 1.0 - abs(x + lean) / max(width, 0.0001);
+  float f = body + (lick - 0.5) * (0.7 + 1.3 * y) - y * 0.18;
+  f *= smoothstep(0.0, 0.07, y);                              // sits on the logs, no hard bottom edge
+  float a = smoothstep(0.08, 0.5, f);
+  vec3 col = mix(vec3(0.62, 0.09, 0.02), vec3(0.98, 0.42, 0.07), smoothstep(0.1, 0.45, f));
+  col = mix(col, vec3(1.0, 0.78, 0.34), smoothstep(0.42, 0.78, f));
+  col = mix(col, vec3(1.0, 0.95, 0.8), smoothstep(0.8, 1.15, f) * (1.0 - y));
+  gl_FragColor = vec4(col * a, a);
+}`;
+
 /**
- * A small campfire on the log pile in the picture. Everything is sized in
- * picture pixels (the pile is about 100 wide, the orc beside it about 55 tall)
- * so the flame stays in proportion on any screen: roughly knee to chest high.
- * `light` is a separate element that warms the ground with an overlay blend,
- * which tints what is already there instead of laying orange fog over it.
+ * The fire on the log pile: the shader flame, plus sparks, thin smoke and the
+ * glow in the logs on a plain canvas. \`light\` is a separate element that warms
+ * the ground with an overlay blend, which tints what is already there instead
+ * of laying orange fog over it.
  */
-function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, f: Fit) {
+function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, f: Fit) {
   const fitRef = useRef(f); fitRef.current = f;
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -42,12 +70,28 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, lightRef: React.
     const still = reducedMotion();
     const hot = sprite([[0, 'rgba(255,238,196,0.9)'], [0.35, 'rgba(255,196,110,0.55)'], [1, 'rgba(255,150,60,0)']]);
     const mid = sprite([[0, 'rgba(255,170,74,0.8)'], [0.45, 'rgba(236,112,40,0.4)'], [1, 'rgba(200,70,20,0)']]);
-    const low = sprite([[0, 'rgba(190,72,30,0.6)'], [0.5, 'rgba(130,38,16,0.25)'], [1, 'rgba(90,20,8,0)']]);
-    const bed = sprite([[0, 'rgba(255,150,70,0.85)'], [0.4, 'rgba(230,90,36,0.45)'], [1, 'rgba(150,40,10,0)']]);
+    const bed = sprite([[0, 'rgba(255,170,80,0.9)'], [0.4, 'rgba(236,96,36,0.5)'], [1, 'rgba(150,40,10,0)']]);
     const ember = sprite([[0, 'rgba(255,214,150,1)'], [0.5, 'rgba(255,130,50,0.6)'], [1, 'rgba(255,80,10,0)']]);
-    const smoke = sprite([[0, 'rgba(150,152,160,0.5)'], [0.6, 'rgba(120,122,130,0.2)'], [1, 'rgba(100,102,110,0)']]);
+    const smoke = sprite([[0, 'rgba(120,108,106,0.5)'], [0.6, 'rgba(96,86,84,0.2)'], [1, 'rgba(80,70,68,0)']]);
     const parts: Spark[] = [];
-    let raf = 0, last = performance.now(), flick = 0.9, target = 0.9, sinceFlick = 0, owedFlame = 0, owedSmoke = 0, owedSpark = 0;
+    let raf = 0, last = performance.now(), flick = 0.9, target = 0.9, sinceFlick = 0, owedSmoke = 0, owedSpark = 0;
+
+    // the shader flame; if WebGL is missing the plain-canvas fallback below stands in
+    const fc = flameRef.current;
+    const gl = fc?.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false }) ?? null;
+    let uT: WebGLUniformLocation | null = null, uFlick: WebGLUniformLocation | null = null, flameOk = false;
+    if (gl) {
+      const shader = (type: number, src: string) => { const sh = gl.createShader(type)!; gl.shaderSource(sh, src); gl.compileShader(sh); return sh; };
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, shader(gl.VERTEX_SHADER, FLAME_VERT)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FLAME_FRAG)); gl.linkProgram(prog);
+      if (gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        gl.useProgram(prog);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        uT = gl.getUniformLocation(prog, 't'); uFlick = gl.getUniformLocation(prog, 'flick'); flameOk = true;
+      }
+    }
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -64,33 +108,31 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, lightRef: React.
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
       // an uneven flicker, shared by the flame and the light it throws
-      sinceFlick += dt; if (sinceFlick > 0.07 + rnd() * 0.09) { sinceFlick = 0; target = 0.72 + rnd() * 0.28; }
-      flick += (target - flick) * Math.min(1, dt * 10);
-      if (lightRef.current) lightRef.current.style.opacity = String(still ? 0.75 : 0.5 + flick * 0.42);
-      // the breeze leans the flame and carries the smoke to the right
+      sinceFlick += dt; if (sinceFlick > 0.07 + rnd() * 0.1) { sinceFlick = 0; target = 0.7 + rnd() * 0.3; }
+      flick += (target - flick) * Math.min(1, dt * 9);
+      if (lightRef.current) lightRef.current.style.opacity = String(still ? 0.8 : 0.52 + flick * 0.42);
       const breeze = 0.5 + 0.5 * Math.sin(t * 0.43) * Math.sin(t * 0.17 + 1.3);
 
+      if (flameOk && gl && fc) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.max(2, Math.round(fc.clientWidth * dpr)), h = Math.max(2, Math.round(fc.clientHeight * dpr));
+        if (fc.width !== w || fc.height !== h) { fc.width = w; fc.height = h; gl.viewport(0, 0, w, h); }
+        gl.uniform1f(uT, still ? 3.0 : t); gl.uniform1f(uFlick, still ? 0.85 : flick);
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
       if (!still) {
-        owedFlame += dt * 70;
-        while (owedFlame >= 1) {
-          owedFlame -= 1;
-          const off = (rnd() + rnd() + rnd() - 1.5) / 1.5;               // bunched toward the middle
-          const tall = 1 - Math.abs(off) * 0.6;
-          parts.push({ x: fx + off * 11 * px, y: fy + (rnd() - 0.3) * 4 * px, vx: -off * 9 * px,
-            vy: -(58 + rnd() * 52) * tall * px * (0.8 + flick * 0.25), life: 0, max: (0.36 + rnd() * 0.32) * (0.7 + tall * 0.4),
-            size: (5.5 + rnd() * 4) * px, seed: rnd() * 6.283, kind: 0 });
-        }
-        owedSmoke += dt * 2.6;
+        owedSmoke += dt * 3;
         while (owedSmoke >= 1) {
           owedSmoke -= 1;
-          parts.push({ x: fx + (rnd() - 0.5) * 8 * px, y: fy - 30 * px, vx: (4 + rnd() * 5) * px, vy: -(17 + rnd() * 9) * px,
-            life: 0, max: 5 + rnd() * 3, size: (9 + rnd() * 5) * px, seed: rnd() * 6.283, kind: 2 });
+          parts.push({ x: fx + (rnd() - 0.5) * 18 * px, y: fy - 78 * px, vx: (5 + rnd() * 7) * px, vy: -(24 + rnd() * 12) * px,
+            life: 0, max: 5.5 + rnd() * 3, size: (16 + rnd() * 9) * px, seed: rnd() * 6.283, kind: 2 });
         }
-        owedSpark += dt * 1.3;
+        owedSpark += dt * 2.4;
         while (owedSpark >= 1) {
           owedSpark -= 1;
-          parts.push({ x: fx + (rnd() - 0.5) * 10 * px, y: fy - (8 + rnd() * 14) * px, vx: (rnd() - 0.4) * 16 * px, vy: -(40 + rnd() * 50) * px,
-            life: 0, max: 1 + rnd() * 1.5, size: (0.7 + rnd() * 0.5) * px, seed: rnd() * 6.283, kind: 1 });
+          parts.push({ x: fx + (rnd() - 0.5) * 22 * px, y: fy - (22 + rnd() * 40) * px, vx: (rnd() - 0.4) * 22 * px, vy: -(60 + rnd() * 70) * px,
+            life: 0, max: 1.1 + rnd() * 1.7, size: (0.9 + rnd() * 0.7) * px, seed: rnd() * 6.283, kind: 1 });
         }
       }
 
@@ -100,44 +142,36 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, lightRef: React.
         if (s.kind !== 2) continue;
         const a = s.life / s.max;
         const size = s.size * (1 + a * 3.2);
-        ctx.globalAlpha = Math.min(1, a / 0.15) * (1 - a) * 0.11;
+        ctx.globalAlpha = Math.min(1, a / 0.15) * (1 - a) * 0.12;
         ctx.drawImage(smoke, s.x - size, s.y - size, size * 2, size * 2);
       }
 
-      // the glowing bed in the logs, then the flame, added light on light
+      // the glowing bed in the logs, added light on light
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.5 + flick * 0.3;
-      ctx.drawImage(bed, fx - 17 * px, fy - 5 * px, 34 * px, 12 * px);
+      ctx.globalAlpha = 0.55 + flick * 0.3;
+      ctx.drawImage(bed, fx - 34 * px, fy - 9 * px, 68 * px, 22 * px);
+      if (!flameOk) {         // no WebGL: a soft steady flame instead of none
+        ctx.globalAlpha = 0.55; ctx.drawImage(mid, fx - 24 * px, fy - 84 * px, 48 * px, 96 * px);
+        ctx.globalAlpha = 0.6; ctx.drawImage(hot, fx - 13 * px, fy - 50 * px, 26 * px, 58 * px);
+      }
 
       for (let i = parts.length - 1; i >= 0; i--) {
         const s = parts[i]; s.life += dt;
         if (s.life >= s.max) { parts.splice(i, 1); continue; }
         const a = s.life / s.max;
-        if (s.kind === 0) {
-          s.vx += (breeze * 10 - 2) * px * dt;
-          s.x += s.vx * dt + Math.sin(t * 9 + s.seed) * 5 * px * a * dt * 6; s.y += s.vy * dt;
-          const size = s.size * (1 - a * 0.72);
-          const fade = Math.min(1, a / 0.08) * Math.pow(1 - a, 1.15);
-          const img = a < 0.3 ? hot : a < 0.68 ? mid : low;
-          ctx.globalAlpha = fade * (a < 0.3 ? 0.42 : 0.5);
-          ctx.drawImage(img, s.x - size * 0.82, s.y - size * 1.5, size * 1.64, size * 3);
-        } else if (s.kind === 1) {
-          s.vx += (Math.sin(t * 2.3 + s.seed) * 26 + breeze * 14) * px * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.985;
+        if (s.kind === 1) {
+          s.vx += (Math.sin(t * 2.3 + s.seed) * 30 + breeze * 18) * px * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.985;
           ctx.globalAlpha = (1 - a) * (0.55 + 0.45 * Math.sin(t * 23 + s.seed));
           ctx.drawImage(ember, s.x - s.size * 2, s.y - s.size * 2, s.size * 4, s.size * 4);
         } else {
-          s.vx += (breeze * 7 - 1) * px * dt; s.x += s.vx * dt + Math.sin(t * 0.9 + s.seed) * 2 * px * dt; s.y += s.vy * dt;
+          s.vx += (breeze * 9 - 1) * px * dt; s.x += s.vx * dt + Math.sin(t * 0.9 + s.seed) * 2 * px * dt; s.y += s.vy * dt;
         }
       }
-
-      if (still) {            // a steady flame when motion is turned down
-        ctx.globalAlpha = 0.5; ctx.drawImage(mid, fx - 10 * px, fy - 34 * px, 20 * px, 40 * px);
-        ctx.globalAlpha = 0.5; ctx.drawImage(hot, fx - 6 * px, fy - 22 * px, 12 * px, 26 * px);
-      } else raf = requestAnimationFrame(frame);
+      if (!still) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
-  }, [canvasRef, lightRef]);
+  }, [canvasRef, flameRef, lightRef]);
 }
 
 const VERT = `attribute vec2 p; varying vec2 v; void main(){ v = p * 0.5 + 0.5; v.y = 1.0 - v.y; gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -210,25 +244,51 @@ export function Banner({ className = '' }: { className?: string }) {
   return <canvas ref={ref} className={`banner ${className}`} role="img" aria-label="The Black Tusk banner" />;
 }
 
-/** Largashbur at dusk with the campfire burning. `quiet` drops the fire and dims it for inner screens. */
+/**
+ * Largashbur with the fire burning. `quiet` drops the fire and dims it for inner screens.
+ *
+ * First load: a tiny blurred copy of the picture shows at once, in exactly the
+ * place the full picture will take. The full picture, the fire and its light
+ * are held back until the picture has finished arriving, then fade in together,
+ * so a slow connection never shows half a picture or a fire burning on black.
+ * The size comes from the scene's own box, which is right on phones even while
+ * the browser's bars are sliding in and out.
+ */
 export function Scene({ quiet = false }: { quiet?: boolean }) {
-  const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const box = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(() => ({ w: window.innerWidth || document.documentElement.clientWidth, h: window.innerHeight || document.documentElement.clientHeight }));
+  const [sharp, setSharp] = useState(false);
   const fire = useRef<HTMLCanvasElement>(null);
   const light = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const on = () => setSize({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener('resize', on); window.addEventListener('orientationchange', on);
-    return () => { window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); };
+  const flame = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current; if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setSize((s) => (s.w === r.width && s.h === r.height ? s : { w: r.width, h: r.height }));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null; ro?.observe(el);
+    const events = ['resize', 'orientationchange', 'pageshow'] as const;
+    events.forEach((e) => window.addEventListener(e, measure));
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); events.forEach((e) => window.removeEventListener(e, measure)); window.visualViewport?.removeEventListener('resize', measure); };
   }, []);
   const f = fit(size.w, size.h);
-  useFire(fire, light, f);
+  useFire(fire, flame, light, f);
+  const place = { width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` };
   return (
-    <div className={`scene ${quiet ? 'scene--quiet' : ''}`} aria-hidden="true">
-      <img className="scene__bg" src={quiet ? './img/largashbur-dim.webp' : './img/largashbur.webp'} alt="" draggable={false}
-        style={{ width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` }} />
-      {!quiet && <div ref={light} className="scene__firelight"
-        style={{ left: f.fx, top: f.fy, width: 430 * f.scale, height: 240 * f.scale }} />}
-      {!quiet && <canvas ref={fire} className="scene__fire" />}
+    <div ref={box} className={`scene ${quiet ? 'scene--quiet' : ''} ${sharp ? 'is-sharp' : ''}`} aria-hidden="true">
+      <img className="scene__bg" src="./img/largashbur-dim.webp" alt="" draggable={false} style={place} />
+      {!quiet && <img className="scene__bg scene__bg--sharp" src="./img/largashbur.webp" alt="" draggable={false} style={place}
+        onLoad={() => setSharp(true)} ref={(img) => { if (img?.complete && img.naturalWidth > 0) setSharp(true); }} />}
+      {!quiet && (
+        <div className="scene__fireset">
+          <div ref={light} className="scene__firelight" style={{ left: f.fx, top: f.fy, width: 760 * f.scale, height: 430 * f.scale }} />
+          <canvas ref={fire} className="scene__fire" />
+          <canvas ref={flame} className="scene__flame" style={{ left: f.fx, top: f.fy + 7 * f.scale, width: FLAME_W * f.scale, height: FLAME_H * f.scale }} />
+        </div>
+      )}
       <div className="scene__smoke scene__smoke--a"><i /></div>{!quiet && <div className="scene__smoke scene__smoke--b"><i /></div>}
       <div className="scene__shade" />
     </div>

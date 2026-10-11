@@ -1,7 +1,8 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { CONFIGURED } from './config';
 import { useAuth } from './lib/auth';
+import { onUpdateReady, reloadIntoUpdate } from './lib/update';
 import MainMenu from './screens/MainMenu';
 import SignIn from './screens/SignIn';
 import CodeOfMauloch from './screens/CodeOfMauloch';
@@ -25,6 +26,19 @@ function MembersOnly({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   if (!profile) return <Navigate to="/sign-in" replace />;
   return <>{children}</>;
+}
+
+/** Shown only when a new build arrived while someone was mid-task. */
+function UpdateBar() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => onUpdateReady(() => setReady(true)), []);
+  if (!ready) return null;
+  return (
+    <div className="updatebar" role="status">
+      <span>A newer version of the app is ready.</span>
+      <button className="btn btn--small btn--go" onClick={reloadIntoUpdate}>Reload</button>
+    </div>
+  );
 }
 
 export default function App() {
@@ -53,6 +67,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {profile?.must_change_password && <ChangePassword forced onDone={reload} />}
+      <UpdateBar />
     </Suspense>
     </ErrorBoundary>
   );

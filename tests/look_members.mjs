@@ -1,0 +1,36 @@
+// Screenshots of member cards: node tests/look_members.mjs
+import { boot } from './harness.mjs';
+import { createClient } from '@supabase/supabase-js';
+const t = await boot();
+const seed = async (name, card) => {
+  const c = createClient('http://localhost:54321', t.backend.ANON_KEY, { auth: { persistSession: false } });
+  await c.auth.signInWithPassword({ email: `${name}@blacktusk.invalid`, password: 'TestPass123' });
+  const r = await c.rpc('update_my_card', card); if (r.error) console.log('seed', name, r.error.message);
+};
+const ev = (from, to) => { let b = 0; for (let h = from; h < to; h++) b |= 1 << h; return b; };
+await seed('gorza', { p_bio: 'Chieftain of the Black Tusks. Keeps the Code, the forge and the peace, in that order.\nBring grievances to the longhouse, not the yard.', p_masteries: [{ skill: 'two_handed', level: 5 }, { skill: 'armor', level: 4 }, { skill: 'blacksmith', level: 3 }], p_timezone: 'Europe/Berlin', p_availability: [ev(18, 23), ev(18, 23), 0, ev(18, 23), ev(17, 24), ev(10, 24), ev(10, 20)] });
+await seed('ugak', { p_bio: 'Miner. Will trade iron for mead.', p_masteries: [{ skill: 'miner', level: 2 }, { skill: 'cook', level: 1 }, { skill: 'first_aid', level: 0 }], p_timezone: 'America/New_York', p_availability: [0, 0, 0, 0, ev(19, 24), ev(12, 24), 0] });
+const d = await t.open({ viewport: { width: 1280, height: 900 } });
+await t.signIn(d, 'nick');
+await d.goto(t.base + '#/members'); await d.waitForSelector('.roster__row'); await d.waitForTimeout(800);
+await t.shot(d, 'members-roster');
+await d.getByText('Gorza gra-Largash').click(); await d.waitForSelector('.modal'); await d.waitForTimeout(1500);
+await t.shot(d, 'members-card-view');
+await d.getByRole('button', { name: 'Close' }).first().click();
+await d.locator('.roster__row', { hasText: '(you)' }).click(); await d.waitForSelector('.modal');
+await d.getByRole('button', { name: 'Add a mastery' }).click(); await d.getByRole('button', { name: 'Add a mastery' }).click(); await d.getByRole('button', { name: 'Add a mastery' }).click();
+await d.getByLabel('Mastery 2').selectOption('alchemist'); await d.getByLabel('Mastery 3').selectOption('artifact_scavenger');
+await d.locator('.masterypick__row').nth(0).getByRole('button', { name: 'Level 1' }).click();
+await d.locator('.masterypick__row').nth(1).getByRole('button', { name: 'Level 4' }).click();
+await d.locator('.masterypick__row').nth(2).getByRole('button', { name: 'Level 5' }).click();
+await d.getByRole('button', { name: '+ Weekday evenings' }).click();
+await d.getByLabel('Bio').fill('Right Tusk and Forgemaster. If the app breaks, I broke it.');
+await d.waitForTimeout(900);
+await d.locator('.modal__box').screenshot({ path: 'tests/shots/members-card-edit.png' });
+const m = await t.open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await t.signIn(m, 'ugak'); await m.goto(t.base + '#/members'); await m.waitForSelector('.roster__row'); await m.waitForTimeout(600);
+await t.shot(m, 'members-roster-phone');
+await m.getByText('Gorza gra-Largash').click(); await m.waitForSelector('.modal'); await m.waitForTimeout(900);
+await t.shot(m, 'members-card-view-phone');
+console.log('errors:', t.errors);
+await t.stop(); process.exit(0);

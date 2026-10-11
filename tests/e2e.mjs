@@ -86,6 +86,29 @@ ok((await nick.locator('.roster__row.is-fallen').count()) === 1, 'Deceased tag i
 const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 9, 'a Deceased member keeps full access');
 await durak2.context().close();
 
+{ // a member fills in their own card: bio, masteries, hours
+  const own = await user('velyn'); await go(own, '/members', 900);
+  await own.locator('.roster__row', { hasText: '(you)' }).click(); await own.waitForSelector('.modal');
+  await own.getByLabel('Bio').fill('Trader out of the Rift. Buys pelts, sells rumours.');
+  await own.getByRole('button', { name: 'Add a mastery' }).click(); await own.getByLabel('Mastery 1').selectOption('skinner');
+  await own.locator('.masterypick__row').nth(0).getByRole('button', { name: 'Level 5' }).click();
+  await own.getByRole('button', { name: 'Add a mastery' }).click(); await own.getByLabel('Mastery 2').selectOption('lockpicking');
+  ok((await own.locator('.masterypick__preview .mastery').first().textContent()).replace(/\s+/g, ' ').includes('Lvl 5') , 'the tag preview reads "Lvl 5 Skinner"', await own.locator('.masterypick__preview .mastery').first().textContent());
+  await own.getByRole('button', { name: '+ Weekends' }).click();
+  await own.getByLabel('Sat 9a to 10a').click();
+  await own.getByRole('button', { name: 'Save', exact: true }).click(); await own.waitForSelector('.note'); await own.getByRole('button', { name: 'Close' }).click(); await own.waitForTimeout(500);
+  ok((await own.locator('.roster__row', { hasText: '(you)' }).locator('.mastery--mini').count()) === 2, 'their masteries show beside their name in the list');
+  await own.locator('.roster__row', { hasText: '(you)' }).click(); await own.waitForSelector('.modal');
+  ok((await own.getByLabel('Bio').inputValue()).startsWith('Trader out of the Rift') && await own.getByLabel('Sat 9a to 10a').getAttribute('aria-pressed') === 'true', 'the card is still there when reopened');
+  ok((await own.locator('.tagpick').count()) === 0, 'a member editing their card is offered no tags to change');
+  await own.context().close();
+  await go(nick, '/members', 900); await nick.getByText('Velyn of the Rift').click(); await nick.waitForSelector('.modal .about');
+  const about = (await nick.locator('.modal .about').textContent()).replace(/\s+/g, ' ');
+  ok(about.includes('Lvl 5') && about.includes('Skinner') && about.includes('Lockpicking') && about.includes('Buys pelts') && about.includes('Usually around'), 'other members see the bio, masteries and hours', about.slice(0, 200));
+  ok((await nick.locator('.modal .about .mastery--l5 .mastery__spark').count()) === 3 && (await nick.locator('.modal .about .mastery--l0 .mastery__spark').count()) === 0, 'a level 5 tag sparkles; a level 0 tag does not');
+  ok((await nick.locator('.modal').getByLabel('Bio').count()) === 0, "an officer cannot rewrite another member's bio");
+  await nick.getByRole('button', { name: 'Close' }).first().click(); await nick.waitForTimeout(300);
+}
 const ugak = await user('ugak');
 await go(ugak, '/members', 900);
 ok(!(await has(ugak, 'button', 'Add member')) && !(await has(ugak, 'button', 'Discord link')), 'a Blooded member sees no admin buttons');
@@ -136,16 +159,42 @@ await gorza.context().close();
 console.log('expansion goals');
 const sharn = await user('sharn'); await go(sharn, '/expansion', 900);
 ok((await sharn.locator('.stage').count()) === 6, 'five stages and the total are shown');
+ok((await sharn.locator('.stage .stagebar').count()) === 6 && (await sharn.locator('.overall').count()) === 0, 'every stage has its own progress bar; there is no single big one');
 ok((await sharn.locator('.stage--total').textContent()).replace(/\s+/g, ' ').includes('of 64,500 Septims'), 'the gold total is 64,500');
 const gold = sharn.getByLabel('Gold gathered').first(); await gold.fill('500'); await gold.blur(); await sharn.waitForTimeout(600);
 await go(ugak, '/expansion', 900);
 ok((await ugak.locator('.res__input').count()) === 0, 'members see progress as text, not inputs');
 ok((await ugak.locator('.stage').first().textContent()).includes('500'), 'the Wise Woman\'s update is saved and visible to members');
+ok((await ugak.locator('.stage').first().locator('.stagebar__pct').textContent()).trim() === '0%' && (await ugak.locator('.stage').first().locator('.stagebar__track span').evaluate((e) => e.style.width)) !== '0%',
+  "the first stage's own bar moved (500 of 16,000 gold is under 1%)");
 ok(!(await has(ugak, 'button', 'Add a stage')) && !(await has(ugak, 'button', 'Edit')), 'members cannot edit goals');
 await sharn.context().close(); await go(sheo, '/code', 300);
 
 console.log('mining map');
 await go(ugak, '/map', 2500);
+{ // the map always covers its frame: zoom all the way out and drag hard in every direction
+  const box = await ugak.locator('.map').boundingBox();
+  const covered = () => ugak.evaluate(() => {
+    const r = document.querySelector('.map').getBoundingClientRect();
+    // tiles ignore the pointer, so ask each one for its own rectangle
+    const tiles = [...document.querySelectorAll('img.leaflet-tile')].filter((i) => i.complete && i.naturalWidth > 0).map((i) => i.getBoundingClientRect());
+    const tileAt = (x, y) => tiles.some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
+    return [[r.left + r.width / 2, r.top + 3], [r.left + r.width / 2, r.bottom - 3], [r.left + 3, r.top + r.height / 2], [r.right - 3, r.top + r.height / 2],
+      [r.left + 3, r.top + 3], [r.right - 3, r.bottom - 3]].every(([x, y]) => tileAt(x, y));
+  });
+  await ugak.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 8; i++) { await ugak.mouse.wheel(0, 500); await ugak.waitForTimeout(200); }
+  await ugak.waitForTimeout(900);
+  ok(await covered(), 'zoomed all the way out, the map still fills its frame');
+  for (const [dx, dy] of [[600, 400], [-900, -700], [900, -600], [-800, 700]]) {
+    await ugak.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await ugak.mouse.down();
+    await ugak.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 6 }); await ugak.mouse.up(); await ugak.waitForTimeout(500);
+  }
+  await ugak.waitForTimeout(700);
+  ok(await covered(), 'dragging stops at the border: nothing shows beyond the map');
+  ok((await ugak.locator('.place--city span').allTextContents()).includes('Whiterun') && (await ugak.locator('.mapkey').textContent()).includes('Locations'), 'the walled cities are labelled and the filter is called Locations');
+  await go(ugak, '/map', 2500);
+}
 ok((await ugak.locator('.leaflet-tile-loaded').count()) > 3, 'map tiles load');
 ok((await ugak.locator('.keyrow').count()) === 10, 'ten ore filters in the key');
 await ugak.getByRole('button', { name: 'Mark a vein' }).click();
@@ -166,12 +215,12 @@ await go(velyn, '/map', 2200); ok((await velyn.locator('.ore').count()) === 2, '
 await velyn.locator('.keyrow', { hasText: 'Gold' }).locator('input').uncheck(); await velyn.waitForTimeout(300);
 ok((await velyn.locator('.ore').count()) === 1, 'unticking an ore hides its markers');
 { // wheel zoom, in a fresh window so nothing else holds the pointer
-  const z = await user('velyn'); await go(z, '/map', 2200);
+  const z = await user('velyn'); await go(z, '/map', 2200); await z.bringToFront();
   const zoom = () => z.evaluate(() => Number(document.querySelector('.map').dataset.zoom));
   const z0 = await zoom(); const vb = await z.locator('.map').boundingBox();
   // (a synthetic wheel event: with several windows open, headless Chromium drops real wheel input to background windows)
   await z.evaluate(([x, y]) => document.querySelector('.map').dispatchEvent(new WheelEvent('wheel', { deltaY: -400, clientX: x, clientY: y, bubbles: true, cancelable: true })), [vb.x + vb.width * 0.6, vb.y + vb.height / 2]);
-  await z.waitForTimeout(1500);
+  await z.waitForFunction((from) => Number(document.querySelector('.map').dataset.zoom) > from, z0, { timeout: 8000 }).catch(() => undefined);
   const z1 = await zoom(); ok(z1 > z0, 'scrolling zooms the map in', `${z0} -> ${z1}`);
   await z.context().close();
 }

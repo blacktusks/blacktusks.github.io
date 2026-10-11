@@ -264,6 +264,36 @@ console.log('hardening');
 }
 ok((await guest.rpc('my_tags')).error && (await guest.rpc('hidden_item_keys')).error, "guests cannot call the app's functions");
 
+console.log('member cards');
+{
+  const card = (c, over = {}) => c.rpc('update_my_card', { p_bio: 'Smith of Largashbur.', p_masteries: [{ skill: 'blacksmith', level: 5 }, { skill: 'miner', level: 2 }],
+    p_timezone: 'America/New_York', p_availability: [0, 0, 0, 0, 4063232, 16776192, 0], ...over });
+  const saved = await card(ugak);
+  ok(!saved.error && saved.data.bio === 'Smith of Largashbur.' && saved.data.masteries.length === 2 && saved.data.availability[4] === 4063232, 'a member saves their own bio, masteries and hours', saved.error?.message);
+  const seen = (await velyn.from('profiles').select('id, bio, masteries, timezone, availability').eq('id', ugak.me).single()).data;
+  ok(seen?.bio === 'Smith of Largashbur.' && seen.masteries[0].skill === 'blacksmith' && seen.timezone === 'America/New_York', 'other members can read the card');
+  ok((await guest.from('profiles').select('bio')).error || ((await guest.from('profiles').select('bio')).data ?? []).length === 0, 'guests cannot');
+  ok((await card(ugak, { p_bio: 'x'.repeat(501) })).error, 'a bio over 500 characters is refused');
+  ok(!(await card(ugak, { p_bio: 'x'.repeat(500) })).error, 'exactly 500 is accepted');
+  ok((await card(ugak, { p_masteries: [{ skill: 'cook', level: 1 }, { skill: 'miner', level: 1 }, { skill: 'tailor', level: 1 }, { skill: 'shield', level: 1 }] })).error, 'a fourth mastery is refused');
+  ok((await card(ugak, { p_masteries: [{ skill: 'dragon_rider', level: 1 }] })).error, 'an unknown mastery is refused');
+  ok((await card(ugak, { p_masteries: [{ skill: 'cook', level: 6 }] })).error && (await card(ugak, { p_masteries: [{ skill: 'cook', level: -1 }] })).error
+    && (await card(ugak, { p_masteries: [{ skill: 'cook', level: 2.5 }] })).error, 'levels outside 0 to 5 are refused');
+  ok((await card(ugak, { p_masteries: [{ skill: 'cook', level: 1 }, { skill: 'cook', level: 3 }] })).error, 'the same mastery twice is refused');
+  ok((await card(ugak, { p_masteries: [{ skill: 'cook', level: 1, shiny: true }] })).error && (await card(ugak, { p_masteries: { skill: 'cook', level: 1 } })).error, 'malformed masteries are refused');
+  ok((await card(ugak, { p_availability: [0, 0, 0] })).error && (await card(ugak, { p_availability: [0, 0, 0, 0, 0, 0, 16777216] })).error
+    && (await card(ugak, { p_availability: [0, 0, 0, 0, 0, 0, -1] })).error, 'hours that are not a week of 24-hour days are refused');
+  ok((await card(ugak, { p_timezone: 'Mars/Olympus Mons; drop table' })).error, 'an odd time zone is refused');
+  const cleared = await card(ugak, { p_bio: '  ', p_masteries: [], p_timezone: '', p_availability: null });
+  ok(!cleared.error && cleared.data.bio === '' && cleared.data.masteries.length === 0 && cleared.data.timezone === null && cleared.data.availability === null, 'a card can be emptied again', cleared.error?.message);
+  await card(ugak);
+  const direct = await velyn.from('profiles').update({ bio: 'defaced' }).eq('id', ugak.me).select('id');
+  ok(direct.error || direct.data.length === 0, "nobody can write another member's card");
+  ok((await velyn.from('profiles').select('bio').eq('id', ugak.me).single()).data.bio === 'Smith of Largashbur.', 'and it is unchanged');
+  ok((await ugak.rpc('my_profile')).data.tags.join() === 'blooded', 'saving a card never touches tags');
+  ok((await guest.rpc('update_my_card', { p_bio: 'x', p_masteries: [], p_timezone: null, p_availability: null })).error, 'guests cannot save a card');
+}
+
 console.log('tag changes');
 {
   // Tags are the officers' business. Every other rank is tried here, one by one.
@@ -305,6 +335,9 @@ ok(!(await nick.from('app_settings').upsert({ key: 'discord_guild_id', value: '1
 discordStub.body = { name: 'Black Tusks', presence_count: 2, members: [{ username: 'ugak#1', status: 'online', game: { name: 'The Elder Scrolls V: Skyrim Special Edition' } }, { username: 'Nick', status: 'idle' }] };
 const pr = (await ugak.api('discord.presence')).data;
 ok(pr?.ok && pr.members.length === 2 && pr.members[0].game.includes('Skyrim'), 'presence returns who is online and playing');
+await nick.from('app_settings').upsert({ key: 'discord_guild_id', value: '323456789012345678' });      // a new id skips the 45 second cache
+discordStub.body = { name: 'Black Tusks', presence_count: 1, members: [{ id: '0', username: 'Gorza', discriminator: '0000', avatar: null, status: 'online', activity: { name: 'The Elder Scrolls V: Skyrim Special Edition' } }] };
+ok((await ugak.api('discord.presence')).data?.members?.[0]?.game?.includes('Skyrim'), "the game is read from Discord's current field name too");
 await nick.from('app_settings').upsert({ key: 'discord_guild_id', value: '223456789012345678' });
 discordStub.status = 403;
 ok((await ugak.api('discord.presence')).data?.reason?.includes('Server Widget'), 'a disabled widget is explained');

@@ -6,11 +6,13 @@ import pkg from './package.json';
 // Relative base so the same build works at any GitHub Pages path.
 export default defineConfig({
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // BUILD_ID changes with every build. Data files are fetched with it in the
+  // address, so a new build never shows the last build's items or map places.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'autoUpdate',      // a new build takes over at once; src/lib/update.ts then reloads the page when it is safe
       includeAssets: ['icons/*.png'],
       manifest: {
         name: 'Black Tusk Companion',
@@ -32,7 +34,7 @@ export default defineConfig({
         navigateFallback: 'index.html',
         runtimeCaching: [
           { urlPattern: /\/map\/.*\.(webp|json)$/, handler: 'CacheFirst', options: { cacheName: 'map-tiles', expiration: { maxEntries: 1400 } } },
-          { urlPattern: /\/data\/.*\.json$/, handler: 'StaleWhileRevalidate', options: { cacheName: 'game-data' } },
+          { urlPattern: /\/data\/.*\.json/, handler: 'CacheFirst', options: { cacheName: 'game-data-v2', expiration: { maxEntries: 6 } } },
           { urlPattern: /\/storage\/v1\/object\/public\//, handler: 'StaleWhileRevalidate', options: { cacheName: 'item-images', expiration: { maxEntries: 600 } } },
         ],
       },

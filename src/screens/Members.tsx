@@ -4,6 +4,10 @@ import { api, supabase } from '../lib/supabase';
 import { TAGS, isForgemaster, isOfficer, sortTags, standing } from '../lib/roles';
 import { PROFILE_COLUMNS, type Profile } from '../lib/types';
 import { Confirm, Modal, Page, Tags } from '../components/ui';
+import { Masteries, MasteryTag } from '../components/Mastery';
+import { AvailabilityEditor, AvailabilityStrip } from '../components/Availability';
+import { MAX_LEVEL, MAX_MASTERIES, SKILL, SKILLS, cleanMasteries, type Mastery } from '../lib/masteries';
+import { cleanWeek, deviceZone, hoursFree } from '../lib/availability';
 import { ChangePassword } from './Account';
 
 interface Presence { configured: boolean; ok?: boolean; reason?: string; server?: string; members: { name: string; status: string; game: string | null }[] }
@@ -22,7 +26,7 @@ function statusOf(p: Profile, presence: Presence | null): { status: Status; game
   if (!p.discord_name) return { status: 'unlinked' };
   const hit = presence.members.find((m) => norm(m.name) === norm(p.discord_name!));
   if (!hit) return { status: 'offline' };
-  if (hit.game && /skyrim/i.test(hit.game)) return { status: 'realm', game: hit.game };
+  if (hit.game && /skyrim|daedric online/i.test(hit.game)) return { status: 'realm', game: hit.game };
   return { status: 'discord', game: hit.game ?? undefined };
 }
 
@@ -37,6 +41,47 @@ function TagPicker({ value, onChange, mine }: { value: string[]; onChange: (t: s
           aria-pressed={value.includes(t.id)} disabled={locked(t.id)} title={locked(t.id) ? 'Only the Chieftain or a Forgemaster can change this tag.' : t.about}
           onClick={() => toggle(t.id)}>{t.label}</button>
       ))}
+    </div>
+  );
+}
+
+/** What every member sees on another member's card. */
+function About({ member }: { member: Profile }) {
+  const masteries = cleanMasteries(member.masteries), week = cleanWeek(member.availability);
+  if (!masteries.length && !member.bio && !hoursFree(week)) return <p className="muted about__empty">Nothing on their card yet.</p>;
+  return (
+    <div className="about">
+      {masteries.length > 0 && <section><span className="label">Masteries</span><Masteries list={masteries} /></section>}
+      {member.bio && <section><span className="label">Bio</span><p className="about__bio">{member.bio}</p></section>}
+      {hoursFree(week) > 0 && <section><span className="label">Usually around</span><AvailabilityStrip week={week} zone={member.timezone ?? null} /></section>}
+    </div>
+  );
+}
+
+/** Choose up to three masteries and a level for each. The tag beside each row is how it will look. */
+function MasteryPicker({ value, onChange }: { value: Mastery[]; onChange: (m: Mastery[]) => void }) {
+  const taken = value.map((m) => m.skill);
+  const set = (i: number, patch: Partial<Mastery>) => onChange(value.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const add = () => { const next = SKILLS.find((sk) => !taken.includes(sk.id)); if (next) onChange([...value, { skill: next.id, level: 0 }]); };
+  return (
+    <div className="masterypick">
+      {value.map((m, i) => (
+        <div className="masterypick__row" key={i}>
+          <select className="input" aria-label={`Mastery ${i + 1}`} value={m.skill} onChange={(e) => set(i, { skill: e.target.value })}>
+            {SKILLS.filter((sk) => sk.id === m.skill || !taken.includes(sk.id)).map((sk) => <option key={sk.id} value={sk.id}>{sk.label}</option>)}
+          </select>
+          <div className="levelpick" role="group" aria-label={`${SKILL[m.skill]?.label} level`}>
+            {Array.from({ length: MAX_LEVEL + 1 }, (_, l) => (
+              <button type="button" key={l} className={m.level === l ? 'is-on' : ''} aria-pressed={m.level === l} aria-label={`Level ${l}`} onClick={() => set(i, { level: l })}>{l}</button>
+            ))}
+          </div>
+          <button type="button" className="btn btn--small btn--ghost" aria-label={`Remove ${SKILL[m.skill]?.label}`} onClick={() => onChange(value.filter((_, j) => j !== i))}>✕</button>
+          <span className="masterypick__preview"><MasteryTag mastery={m} /></span>
+        </div>
+      ))}
+      {value.length < MAX_MASTERIES
+        ? <button type="button" className="btn btn--small" onClick={add}>Add a mastery</button>
+        : <p className="hint">Three is the limit. Remove one to choose another.</p>}
     </div>
   );
 }
@@ -110,6 +155,8 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
   const canManage = officer && (smith || !member.tags.includes('forgemaster') || self);
   const [display, setDisplay] = useState(member.display_name); const [discord, setDiscord] = useState(member.discord_name ?? '');
   const [username, setUsername] = useState(member.username ?? ''); const [tags, setTags] = useState(member.tags);
+  const [bio, setBio] = useState(member.bio ?? ''); const [masteries, setMasteries] = useState<Mastery[]>(() => cleanMasteries(member.masteries));
+  const [zone, setZone] = useState(member.timezone ?? deviceZone()); const [week, setWeek] = useState(() => cleanWeek(member.availability));
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [saved, setSaved] = useState(false);
   const [changing, setChanging] = useState(false); const [removing, setRemoving] = useState(false);
   const [revealed, setRevealed] = useState<string | null | undefined>(undefined);
@@ -125,7 +172,11 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
     void run(async () => {
       if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}) });
       else { const { error } = await supabase.rpc('update_my_profile', { p_display_name: display, p_discord_name: discord }); if (error) throw new Error(error.message); }
-      if (self) await reload();
+      if (self) {
+        const { error } = await supabase.rpc('update_my_card', { p_bio: bio, p_masteries: masteries, p_timezone: zone || null, p_availability: hoursFree(week) ? week : null });
+        if (error) throw new Error(/check constraint/.test(error.message) ? 'Your card was not saved: something in it is not allowed. Keep the bio to 500 characters.' : error.message);
+        await reload();
+      }
       onChanged(); setSaved(true);
     });
   };
@@ -143,11 +194,12 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
   }
   const editable = self || canManage;
   return (
-    <Modal title={member.display_name} onClose={onClose} wide={canManage}>
+    <Modal title={member.display_name} onClose={onClose} wide={canManage || self}>
       <div className="member__top">
         <Tags tags={member.tags} />
         {st.status !== 'unknown' && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}{st.game && st.status === 'discord' ? ` (${st.game})` : ''}</span>}
       </div>
+      {!self && <About member={member} />}
       {!editable ? (
         <>
           {member.discord_name && <p className="muted" style={{ marginTop: 12 }}>Discord: {member.discord_name}</p>}
@@ -162,6 +214,15 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
             <input type="text" value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={64} />
             <small>As it shows in the clan Discord's member list. This is how the Members screen knows who is online.</small>
           </label>
+          {self && <>
+            <label className="field"><span>Bio</span>
+              <textarea value={bio} onChange={(e) => setBio(e.target.value.slice(0, 500))} maxLength={500} rows={4} placeholder="Who is your character? What do you do for the clan?" />
+              <small className={bio.length >= 480 ? 'is-near' : ''}>{bio.length} of 500 characters</small>
+            </label>
+            <span className="label">Masteries</span>
+            <MasteryPicker value={masteries} onChange={setMasteries} />
+            <AvailabilityEditor week={week} zone={zone} onWeek={setWeek} onZone={setZone} />
+          </>}
           {canManage && <>
             <label className="field"><span>Sign-in name</span>
               <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!smith} autoCapitalize="none" spellCheck={false} />
@@ -226,6 +287,11 @@ function DiscordSetup({ presence, onClose, onSaved }: { presence: Presence | nul
         <p className="hint">A member shows as in the realm when Discord reports them playing Skyrim. Discord cannot tell Daedric Online from single-player Skyrim, and members who hide their game activity show as in Discord only.</p>
         {presence?.configured && presence.ok === false && <p className="error">{presence.reason}</p>}
         {presence?.ok && <p className="note">Connected to {presence.server}. {presence.members.length} online right now.</p>}
+        {presence?.ok && presence.members.length > 0 && (
+          <p className="hint">Names as Discord reports them right now: {presence.members.map((m) => m.name).join(', ')}.
+            The Discord name on a member's profile has to match one of these (capitals do not matter).
+            {presence.members.some((m) => m.game) ? '' : ' Nobody is showing a game at the moment, so nobody will read as in the realm.'}</p>
+        )}
         {error && <p className="error" role="alert">{error}</p>}
         {done && <p className="note" role="status">Saved.</p>}
         <div className="row row--end" style={{ marginTop: 14 }}>
@@ -274,7 +340,8 @@ export default function Members() {
                 <button className={`roster__row ${m.tags.includes('deceased') ? 'is-fallen' : ''}`} onClick={() => setOpen(m.id)}>
                   <span className={`dot dot--${st.status}`} aria-hidden="true" />
                   <span className="roster__name">{m.display_name}{m.id === me.id && <em> (you)</em>}</span>
-                  <span className="roster__tags"><span className="tags">{sortTags(m.tags).map((t) => <span key={t} className="tag" style={{ ['--c' as any]: TAGS.find((x) => x.id === t)?.color }}>{TAGS.find((x) => x.id === t)?.label}</span>)}</span></span>
+                  <span className="roster__tags"><span className="tags">{sortTags(m.tags).map((t) => <span key={t} className="tag" style={{ ['--c' as any]: TAGS.find((x) => x.id === t)?.color }}>{TAGS.find((x) => x.id === t)?.label}</span>)}</span>
+                    <Masteries list={cleanMasteries(m.masteries)} mini /></span>
                   {st.status !== 'unknown' && <span className={`presence presence--${st.status}`}>{STATUS[st.status][0]}</span>}
                 </button>
               </li>

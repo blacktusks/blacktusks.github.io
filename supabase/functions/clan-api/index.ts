@@ -341,7 +341,12 @@ async function handle(req: Request): Promise<Response> {
         } else {
           const w = await res.json();
           const members = (Array.isArray(w.members) ? w.members : []).slice(0, 200)
-            .map((m: any) => ({ name: String(m.username ?? "").slice(0, 64), status: String(m.status ?? ""), game: m.game?.name ? String(m.game.name).slice(0, 80) : null }));
+            // What someone is playing arrives as "activity" today and arrived as "game" in older
+            // answers. Discord's documentation promises neither, only the name and status.
+            .map((m: any) => {
+              const playing = m.activity?.name ?? m.game?.name;
+              return { name: String(m.username ?? "").slice(0, 64), status: String(m.status ?? ""), game: playing ? String(playing).slice(0, 80) : null };
+            });
           out = { configured: true, ok: true, server: String(w.name ?? "").slice(0, 100), online: Number(w.presence_count) || members.length, members };
         }
       } catch {

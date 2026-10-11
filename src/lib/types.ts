@@ -1,10 +1,12 @@
 /** What every member can see of another member. */
 export interface Profile {
   id: string; display_name: string; tags: string[]; discord_name: string | null; created_at: string;
+  /** The member's card: written by the member, readable by every member. */
+  bio?: string; masteries?: { skill: string; level: number }[]; timezone?: string | null; availability?: number[] | null;
   /** Only present on your own profile and in the officers' list. */
   username?: string; must_change_password?: boolean;
 }
-export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at';
+export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at, bio, masteries, timezone, availability';
 export type Visibility = 'all' | 'specific' | 'draft';
 export interface Post {
   id: string; title: string; body: string; visibility: Visibility; audience: string[];

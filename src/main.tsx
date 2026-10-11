@@ -8,6 +8,9 @@ import './styles/base.css';
 import './styles/screens.css';
 import { AuthProvider } from './lib/auth';
 import App from './App';
+import { watchForUpdates } from './lib/update';
+
+watchForUpdates();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

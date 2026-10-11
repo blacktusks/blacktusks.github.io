@@ -12,6 +12,18 @@ function Bar({ have, goal }: { have: number; goal: number }) {
   return <span className={`bar ${p >= 100 ? 'is-full' : ''}`} role="img" aria-label={`${Math.floor(p)} percent`}><span style={{ width: `${p}%` }} /></span>;
 }
 
+/** A stage's progress: the average of its resources, so one big number (gold) does not drown out the rest. */
+const stagePct = (rs: { have: number; goal: number }[]) => (rs.length ? rs.reduce((s, r) => s + pct(r.have, r.goal), 0) / rs.length : 0);
+
+function StageBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className={`stagebar ${value >= 100 ? 'is-full' : ''}`} role="img" aria-label={`${label}: ${Math.floor(value)} percent gathered`}>
+      <span className="stagebar__track"><span style={{ width: `${Math.min(100, value)}%` }} /></span>
+      <span className="stagebar__pct">{Math.floor(value)}<small>%</small></span>
+    </div>
+  );
+}
+
 /** The "have" number. Officers type straight into it; it saves when they leave the field. */
 function Have({ r, canEdit, onSave }: { r: Resource; canEdit: boolean; onSave: (id: string, have: number) => Promise<void> }) {
   const [text, setText] = useState(String(r.have)); const [state, setState] = useState<'' | 'saving' | 'error'>('');
@@ -126,8 +138,7 @@ export default function Expansion() {
     }
     return [...map.values()];
   }, [resources]);
-  // Overall progress: the average of every counted resource's own progress, so gold does not drown out the rest.
-  const overall = totals.length ? totals.reduce((s, t) => s + pct(t.have, t.goal), 0) / totals.length : 0;
+  const overall = stagePct(totals);
 
   return (
     <Page title="Expansion Goals" sub="What Largashbur needs, stage by stage" width="wide"
@@ -136,21 +147,19 @@ export default function Expansion() {
       {!stages && !error && <p className="empty">Counting the stores…</p>}
       {stages && (
         <>
-          <section className="overall" aria-label="Overall progress">
-            <div className="overall__num">{Math.floor(overall)}<small>%</small></div>
-            <div className="overall__text"><strong>Gathered so far, across every resource</strong><Bar have={overall} goal={100} />
-              {officer && <span className="hint">Tap any gathered number to update it. It saves when you leave the field.</span>}</div>
-          </section>
+          {officer && <p className="hint stages__hint">Tap any gathered number to update it. It saves when you leave the field.</p>}
           <div className="stages">
             {stages.map((s) => {
               const rs = resources.filter((r) => r.stage_id === s.id);
               const done = rs.length > 0 && rs.every((r) => r.have >= r.goal);
+              const gathered = stagePct(rs);
               return (
                 <section key={s.id} className={`panel stage ${done ? 'is-done' : ''}`}>
                   <div className="panel__head">
                     <h2 className="panel__title">{s.title}</h2>
                     {done ? <span className="stage__done">Ready to build</span> : officer && <button className="btn btn--small" onClick={() => setEditing(s)}>Edit</button>}
                   </div>
+                  <StageBar label={s.title} value={gathered} />
                   <div className="panel__body">
                     {s.details && <p className="muted" style={{ marginBottom: 10 }}>{s.details}</p>}
                     {rs.length === 0 && <p className="muted">Nothing listed yet.</p>}
@@ -168,6 +177,7 @@ export default function Expansion() {
             })}
             <section className="panel stage stage--total">
               <div className="panel__head"><h2 className="panel__title">Total</h2></div>
+              <StageBar label="Every stage together" value={overall} />
               <div className="panel__body">
                 {totals.map((t) => (
                   <div className="res" key={t.name}>

@@ -1,3 +1,4 @@
+import { dataUrl } from '../config';
 import type { LedgerEntry } from './types';
 
 export type Cat = 'weapons' | 'apparel' | 'potions' | 'scrolls' | 'food' | 'ingredients' | 'books' | 'misc';
@@ -14,7 +15,7 @@ export interface Detail {
 
 let itemsPromise: Promise<Item[]> | null = null;
 export function loadItems(): Promise<Item[]> {
-  itemsPromise ??= fetch('./data/items.json').then((r) => r.json()).then((d: { sources: string[]; items: any[][] }) =>
+  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; items: any[][] }) =>
     d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags]) => ({
       key, name, cat, type, cls, value, weight, stat, src: d.sources[src], generic: !!(flags & 1), enchanted: !!(flags & 2), lower: name.toLowerCase(),
     })));
@@ -22,7 +23,7 @@ export function loadItems(): Promise<Item[]> {
 }
 let detailsPromise: Promise<Record<string, Detail>> | null = null;
 export function loadDetails(): Promise<Record<string, Detail>> {
-  detailsPromise ??= fetch('./data/details.json').then((r) => r.json());
+  detailsPromise ??= fetch(dataUrl('details.json')).then((r) => r.json());
   return detailsPromise;
 }
 

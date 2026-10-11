@@ -3,3 +3,4 @@ dist/
 *.local
 tests/shots/
 .DS_Store
+tools/art/

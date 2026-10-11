@@ -234,9 +234,14 @@ async function rest(req, res, url, body) {
       const fn = p.slice(4); const args = body.length ? JSON.parse(body.toString()) : {};
       const keys = Object.keys(args);
       const sql = `select to_json(r) as j from public.${q(fn)}(${keys.map((k, i) => `${q(k)} => $${i + 1}`).join(', ')}) as r`;
-      const lit = (v) => (Array.isArray(v) ? '{' + v.map((x) => '"' + String(x).replace(/["\\]/g, '\\$&') + '"').join(',') + '}' : v);
-      const setof = (await db.query(`select bool_or(proretset) as s from pg_proc where proname = $1 and pronamespace = 'public'::regnamespace`, [fn])).rows[0].s;
-      const r = await as(claims, (tx) => tx.query(sql, keys.map((k) => lit(args[k]))));
+      // Like PostgREST, hand each argument over in the shape its declared type expects.
+      const meta = (await db.query(`select p.proretset as s, (select json_object_agg(a.n, format_type(a.t, null)) from unnest(p.proargnames, p.proargtypes::oid[]) as a(n, t)) as types
+        from pg_proc p where p.proname = $1 and p.pronamespace = 'public'::regnamespace limit 1`, [fn])).rows[0] ?? { s: false, types: {} };
+      const setof = meta.s;
+      const lit = (v, type = '') => (v === null || v === undefined ? null
+        : /^jsonb?$/.test(type) ? JSON.stringify(v)
+        : Array.isArray(v) ? '{' + v.map((x) => (x === null ? 'NULL' : '"' + String(x).replace(/["\\]/g, '\\$&') + '"')).join(',') + '}' : v);
+      const r = await as(claims, (tx) => tx.query(sql, keys.map((k) => lit(args[k], meta.types?.[k]))));
       return send(res, 200, setof ? r.rows.map((x) => x.j) : r.rows[0]?.j ?? null);
     }
     const table = `public.${q(p)}`; const params = [];

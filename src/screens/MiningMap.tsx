@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { dataUrl } from '../config';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { isHerald } from '../lib/roles';
@@ -116,24 +117,33 @@ export default function MiningMap() {
   useEffect(() => {
     let dead = false;
     (async () => {
-      const [geo, pl] = await Promise.all([fetch('./map/map.json').then((r) => r.json()), fetch('./data/places.json').then((r) => r.json())]);
+      const [geo, pl] = await Promise.all([fetch('./map/map.json').then((r) => r.json()), fetch(dataUrl('places.json')).then((r) => r.json())]);
       if (dead || !el.current) return;
       geoRef.current = geo;
       const map = L.map(el.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: geo.max_zoom + 2, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
-        attributionControl: false, zoomControl: false, maxBoundsViscosity: 0.85, inertia: true });
+        attributionControl: false, zoomControl: false, maxBoundsViscosity: 1, bounceAtZoomLimits: false, inertia: true });
       mapRef.current = map;
       const bounds = L.latLngBounds(map.unproject([0, geo.h], geo.max_zoom), map.unproject([geo.w, 0], geo.max_zoom));
       L.tileLayer('./map/{z}/{x}_{y}.webp', { tileSize: 256, minZoom: 0, maxNativeZoom: geo.max_zoom, maxZoom: geo.max_zoom + 2, bounds, noWrap: true, keepBuffer: 3 }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       L.control.attribution({ position: 'bottomleft', prefix: false }).addAttribution('Terrain: Skyrim, Bethesda. Map textures: A Quality World Map by IcePenguin').addTo(map);
-      map.setMaxBounds(bounds.pad(0.2)); map.fitBounds(bounds);
-      map.setMinZoom(Math.floor(map.getZoom() * 4) / 4);
-      // On a tall phone screen, open filling the height and centred on home instead of as a thin strip.
-      const size = map.getSize(); const home = (pl.places as Place[]).find((p) => p[0] === 'Largashbur');
-      if (size.y > size.x && home) {
-        map.setView(map.unproject([(home[2] / CELL - geo.x0) * geo.px_per_cell, (geo.y1 - home[3] / CELL) * geo.px_per_cell], geo.max_zoom), map.getBoundsZoom(bounds, true), { animate: false });
+      // The edges are locked: the map always covers the screen, so there is never
+      // anything to see beyond it. The furthest zoom out is the one where the map
+      // just fills the view, and dragging stops dead at the border.
+      map.setMaxBounds(bounds);
+      const lock = () => {
+        const cover = map.getBoundsZoom(bounds, true);
+        map.setMinZoom(cover);
+        if (map.getZoom() < cover) map.setZoom(cover, { animate: false });
         map.panInsideBounds(bounds, { animate: false });
-      }
+      };
+      // Open filling the view. On a tall phone screen that is a slice of the map, so centre it on home.
+      const size = map.getSize(); const home = (pl.places as Place[]).find((p) => p[0] === 'Largashbur');
+      const start = size.y > size.x && home
+        ? map.unproject([(home[2] / CELL - geo.x0) * geo.px_per_cell, (geo.y1 - home[3] / CELL) * geo.px_per_cell], geo.max_zoom)
+        : bounds.getCenter();
+      map.setView(start, map.getBoundsZoom(bounds, true), { animate: false });
+      lock(); map.on('resize', lock);
       placeLayer.current.addTo(map); layer.current.addTo(map);
       const zoomClass = () => {
         const z = map.getZoom(), c = el.current?.classList;
