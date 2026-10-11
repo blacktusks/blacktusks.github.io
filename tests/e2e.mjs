@@ -104,6 +104,7 @@ await durak.context().close();
 await nick.getByText('Durak Iron-Jaw').click(); await nick.waitForSelector('.modal');
 ok((await nick.locator('.modal input').count()) === 0 && !(await has(nick, 'button', 'Show current password')) && (await nick.locator('.tagpick').count()) === 0,
   'an officer opening a member sees the plain card first, with nothing to edit');
+ok(!(await has(nick, 'button', 'Pay Respect')), 'a living member has no Pay Respect button');
 await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
 await nick.getByRole('button', { name: 'Show current password' }).click(); await nick.waitForSelector('.secret__value');
 ok((await nick.locator('.secret__value').textContent()) === 'DurakOwnPass77', 'Forgemaster can view the member\'s current password');
@@ -119,17 +120,33 @@ console.log('deceased');
 await go(nick, '/deceased', 900); await nick.waitForSelector('.roster__row');
 ok((await nick.locator('.page__title').textContent()) === 'Deceased' && (await nick.locator('.roster__row').count()) === 1 && (await nick.textContent('.page__sub')).includes('1 fallen')
   && !(await has(nick, 'button', 'Add member')) && !(await has(nick, 'button', 'Discord link')), 'the Deceased screen lists only the fallen, with no Add member button');
+ok((await nick.locator('.roster .dot').count()) === 0 && (await nick.locator('.roster .presence').count()) === 0 && (await nick.locator('.roster__status').count()) === 0, 'the fallen are listed with no online dot or status');
 await nick.getByText('Durak Iron-Jaw').click(); await nick.waitForSelector('.modal');
 const fallenCard = async (page) => (await page.textContent('.modal')).replace(/\s+/g, ' ');
+ok((await nick.locator('.modal .presence').count()) === 0 && !/On the app|Offline|In Discord|In the realm/.test(await fallenCard(nick)), 'and their card has none either');
+ok((await fallenCard(nick)).includes('Passage of honor') && (await fallenCard(nick)).includes('Not yet written') && (await fallenCard(nick)).indexOf('Passage of honor') < (await fallenCard(nick)).indexOf('Cause of death'),
+  'a fallen card has a passage of honor above the cause of death', await fallenCard(nick));
+{ // Pay Respect: green praying hands and a fire rise from the button and are gone in a moment
+  await nick.getByRole('button', { name: 'Pay Respect' }).click(); await nick.waitForTimeout(250);
+  const burst = await nick.evaluate(() => { const b = document.querySelector('.respect__burst'); return b && { text: b.textContent, tint: getComputedStyle(b.querySelector('.respect__pray')).filter, fire: getComputedStyle(b.querySelector('.respect__fire')).filter, anim: getComputedStyle(b).animationName }; });
+  ok(burst?.text === '🙏🔥' && /hue-rotate/.test(burst.tint) && burst.fire === 'none' && burst.anim === 'respect-rise', 'Pay Respect shows green praying hands and a plain fire', JSON.stringify(burst));
+  await nick.getByRole('button', { name: 'Pay Respect' }).click(); await nick.waitForTimeout(150);
+  ok((await nick.locator('.respect__burst').count()) === 2, 'pressing again pays respect again');
+  await nick.waitForTimeout(1700);
+  ok((await nick.locator('.respect__burst').count()) === 0 && (await nick.locator('.modal').count()) === 1, 'they fade and are gone within a moment, and the card stays open');
+}
 ok((await fallenCard(nick)).includes('Cause of death') && (await fallenCard(nick)).includes('Not yet recorded') && (await fallenCard(nick)).includes('Date of passing')
   && (await nick.locator('.fallen__date.is-blank').count()) === 1 && (await nick.locator('.fallen__date').textContent()).trim() === ''
   && !/Bio|Usually around|UNKNOWN/.test(await fallenCard(nick)), 'a fallen card shows a cause of death and an empty date of passing in place of a bio and hours', await fallenCard(nick));
 await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
-ok((await nick.getByLabel('Bio').count()) === 0 && (await nick.locator('.modal .avail').count()) === 0 && (await nick.getByLabel('Cause of death').count()) === 1 && (await nick.getByLabel('Date of passing').count()) === 1,
-  'its form has no bio and no hours, and an officer gets cause of death and date of passing');
+ok((await nick.getByLabel('Bio').count()) === 0 && (await nick.locator('.modal .avail').count()) === 0 && (await nick.getByLabel('Passage of honor').count()) === 1 && (await nick.getByLabel('Cause of death').count()) === 1 && (await nick.getByLabel('Date of passing').count()) === 1
+  && !(await has(nick, 'button', 'Pay Respect')), 'its form has no bio and no hours, and an officer gets passage of honor, cause of death and date of passing');
+await nick.getByLabel('Passage of honor').fill('Durak stood where others ran. The fire of Largashbur remembers him.');
 await nick.getByLabel('Cause of death').fill('Fell holding the gate against a giant.'); await nick.getByLabel('Date of passing').fill('2026-10-03');
 await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.modal .note');
 ok((await fallenCard(nick)).includes('Fell holding the gate against a giant.') && (await fallenCard(nick)).includes('October 3, 2026'), 'an officer records the cause of death and the date of passing', await fallenCard(nick));
+ok((await nick.locator('.fallen__honor').textContent()) === 'Durak stood where others ran. The fire of Largashbur remembers him.' && (await fallenCard(nick)).indexOf('Durak stood where others ran') < (await fallenCard(nick)).indexOf('Fell holding the gate'),
+  'and the passage of honor, which reads above the cause of death');
 await nick.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
 await nick.getByLabel('Date unknown').check();
 ok(await nick.getByLabel('Date of passing').isDisabled(), 'ticking Date unknown puts the date aside');
@@ -141,10 +158,11 @@ await nick.locator('.modal').getByRole('button', { name: 'Close' }).click(); awa
   await go(durak2, '/members', 900); await durak2.waitForSelector('.roster__row');
   ok((await durak2.locator('.roster__row', { hasText: '(you)' }).count()) === 0, 'they do not find themselves under Members');
   await go(durak2, '/', 300); await durak2.getByRole('button', { name: 'Profile', exact: true }).click(); await durak2.waitForSelector('.modal');
-  ok((await fallenCard(durak2)).includes('Fell holding the gate against a giant.') && (await fallenCard(durak2)).includes('UNKNOWN'), 'their Profile is the Deceased card');
+  ok((await fallenCard(durak2)).includes('Fell holding the gate against a giant.') && (await fallenCard(durak2)).includes('UNKNOWN') && (await fallenCard(durak2)).includes('Durak stood where others ran'), 'their Profile is the Deceased card');
+  ok((await durak2.locator('.modal .presence').count()) === 0 && !(await has(durak2, 'button', 'Pay Respect')), 'with no online status on it, and no Pay Respect button on their own card');
   await durak2.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click();
   ok((await durak2.getByLabel('Display name').count()) === 1 && await has(durak2, 'button', 'Change password') && (await durak2.getByLabel('Bio').count()) === 0 && (await durak2.locator('.modal .avail').count()) === 0
-    && (await durak2.getByLabel('Cause of death').count()) === 0 && (await durak2.getByLabel('Date of passing').count()) === 0 && (await fallenCard(durak2)).includes("recorded by the clan's officers"),
+    && (await durak2.getByLabel('Passage of honor').count()) === 0 && (await durak2.getByLabel('Cause of death').count()) === 0 && (await durak2.getByLabel('Date of passing').count()) === 0 && (await fallenCard(durak2)).includes("recorded by the clan's officers"),
     'they can still edit their name and password, but not a bio, hours, or their own death');
   await durak2.context().close();
 }
@@ -296,7 +314,9 @@ console.log('roles');
   // the fallen, as a plain member sees them
   await go(ugak, '/deceased', 900); await ugak.waitForSelector('.roster__row');
   await ugak.getByText('Durak Iron-Jaw').click(); await ugak.waitForSelector('.modal');
-  ok((await ugak.textContent('.modal')).includes('Fell holding the gate against a giant.') && !(await has(ugak, 'button', 'Edit')), 'a member reads a fallen card but cannot edit it');
+  ok((await ugak.textContent('.modal')).includes('Fell holding the gate against a giant.') && (await ugak.textContent('.modal')).includes('Durak stood where others ran') && !(await has(ugak, 'button', 'Edit')), 'a member reads a fallen card but cannot edit it');
+  await ugak.getByRole('button', { name: 'Pay Respect' }).click(); await ugak.waitForTimeout(250);
+  ok((await ugak.locator('.respect__burst').count()) === 1, 'and can pay their respects');
   await ugak.locator('.modal').getByRole('button', { name: 'Close' }).click();
 }
 

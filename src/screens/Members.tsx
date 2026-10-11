@@ -128,13 +128,15 @@ export function Roster({ fallen = false }: { fallen?: boolean }) {
     // who has the app itself open (you always do, or you would not be reading this)
     supabase.rpc('app_online').then(({ data, error }) => { if (!error) setOnApp(new Set([...((data as string[] | null) ?? []), me.id])); }, () => undefined);
   }, [me.id]);
-  useEffect(() => { void load(); loadPresence(); const t = setInterval(loadPresence, 30000); return () => clearInterval(t); }, [load, loadPresence]);
+  // The fallen have no online status, so their list never asks who is about.
+  useEffect(() => { void load(); if (fallen) return; loadPresence(); const t = setInterval(loadPresence, 30000); return () => clearInterval(t); }, [load, loadPresence, fallen]);
 
   const members = useMemo(() => everyone?.filter((m) => isFallen(m.tags) === fallen) ?? null, [everyone, fallen]);
   // Whoever is about comes first: in the realm, then in Discord or on the app, then the rest. Within each, by standing, then name.
+  // The fallen are listed by the standing they held, then name.
   const sorted = useMemo(() => [...(members ?? [])].sort((a, b) =>
-    onlineRank(statusOf(a, presence).status, onApp.has(a.id)) - onlineRank(statusOf(b, presence).status, onApp.has(b.id))
-    || standing(a.tags) - standing(b.tags) || a.display_name.localeCompare(b.display_name)), [members, presence, onApp]);
+    (fallen ? 0 : onlineRank(statusOf(a, presence).status, onApp.has(a.id)) - onlineRank(statusOf(b, presence).status, onApp.has(b.id)))
+    || standing(a.tags) - standing(b.tags) || a.display_name.localeCompare(b.display_name)), [members, presence, onApp, fallen]);
   const inRealm = sorted.filter((m) => statusOf(m, presence).status === 'realm').length;
   const appCount = sorted.filter((m) => onApp.has(m.id)).length;
   const current = sorted.find((m) => m.id === open);
@@ -154,21 +156,21 @@ export function Roster({ fallen = false }: { fallen?: boolean }) {
       {!members && !error && <p className="empty">{fallen ? 'Reading the names of the fallen…' : 'Counting heads…'}</p>}
       {members && fallen && members.length === 0 && <p className="empty">No Black Tusk has fallen.{officer ? ' When a character dies, give them the Deceased tag on the Members screen and they will be listed here.' : ''}</p>}
       {members && members.length > 0 && (
-        <ul className="roster">
+        <ul className={`roster ${fallen ? 'roster--fallen' : ''}`}>
           {sorted.map((m) => {
             const st = statusOf(m, presence); const here = onApp.has(m.id);
             return (
               <li key={m.id}>
                 <button className="roster__row" onClick={() => { setMoved(''); setOpen(m.id); }}>
-                  <span className={`dot dot--${st.status} ${here ? 'dot--app' : ''}`} aria-hidden="true" />
+                  {!fallen && <span className={`dot dot--${st.status} ${here ? 'dot--app' : ''}`} aria-hidden="true" />}
                   <span className="roster__name">{m.display_name}{m.id === me.id && <em> (you)</em>}</span>
                   <span className="roster__tags"><span className="tags">{sortTags(m.tags).map((t) => <span key={t} className="tag" style={{ ['--c' as any]: TAGS.find((x) => x.id === t)?.color }}>{TAGS.find((x) => x.id === t)?.label}</span>)}</span>
                     <Masteries list={cleanMasteries(m.masteries)} mini /></span>
-                  <span className="roster__status">
+                  {!fallen && <span className="roster__status">
                     {/* someone with the app open is not "offline", whatever Discord says */}
                     {st.status !== 'unknown' && !(here && st.status === 'offline') && <span className={`presence presence--${st.status}`}>{STATUS[st.status][0]}</span>}
                     {here && <span className="presence presence--app" title={ON_APP}>On the app</span>}
-                  </span>
+                  </span>}
                 </button>
               </li>
             );

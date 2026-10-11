@@ -1,6 +1,6 @@
 // A member's card: the pop-up behind a name on the Members and Deceased screens,
 // and behind Profile on the main menu. It opens as everyone sees it; Edit turns it into a form.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { api, supabase } from '../lib/supabase';
 import { TAGS, isFallen, isForgemaster, isOfficer } from '../lib/roles';
@@ -68,22 +68,48 @@ function About({ member, own }: { member: Profile; own: boolean }) {
   );
 }
 
-/** The card of a fallen character: how they died and when, in place of a bio and hours. */
+/** The card of a fallen character: a passage in their honor, how they died and when, in place of a bio and hours. */
 function Fallen({ member }: { member: Profile }) {
   const masteries = cleanMasteries(member.masteries);
   return (
     <div className="about">
       {masteries.length > 0 && <section><span className="label">Masteries</span><Masteries list={masteries} /></section>}
+      <section><span className="label">Passage of honor</span>
+        {member.death_honor ? <p className="about__bio fallen__honor">{member.death_honor}</p> : <p className="muted">Not yet written.</p>}
+      </section>
       <section><span className="label">Cause of death</span>
         {member.death_cause ? <p className="about__bio">{member.death_cause}</p> : <p className="muted">Not yet recorded.</p>}
       </section>
       <section><span className="label">Date of passing</span>
         {/* empty until an officer enters it */}
         <p className={`fallen__date ${member.death_date || member.death_date_unknown ? '' : 'is-blank'}`}>
-          {member.death_date_unknown ? 'UNKNOWN' : member.death_date ? longDate(member.death_date) : ' '}
+          {member.death_date_unknown ? 'UNKNOWN' : member.death_date ? longDate(member.death_date) : '\u00a0'}
         </p>
       </section>
     </div>
+  );
+}
+
+/** Pay Respect: a green pair of praying hands and a fire rise from the button and are gone in a moment.
+ *  Nothing is saved; it is a gesture, and it can be made as often as it is meant. */
+function PayRespect({ name }: { name: string }) {
+  const [bursts, setBursts] = useState<number[]>([]);
+  const next = useRef(0); const timers = useRef<number[]>([]);
+  useEffect(() => () => { timers.current.forEach((t) => window.clearTimeout(t)); }, []);
+  const pay = () => {
+    const id = ++next.current;
+    setBursts((b) => [...b.slice(-5), id]);
+    // gone as soon as it has faded, whether or not the browser was drawing at the time
+    timers.current.push(window.setTimeout(() => setBursts((b) => b.filter((x) => x !== id)), 1350));
+  };
+  return (
+    <span className="respect">
+      <button type="button" className="btn" onClick={pay}>Pay Respect</button>
+      {bursts.map((id) => (
+        <span key={id} className="respect__burst" aria-hidden="true"><span className="respect__pray">🙏</span><span className="respect__fire">🔥</span></span>
+      ))}
+      <span className="sr" role="status">{bursts.length ? `You pay your respects to ${name}.` : ''}</span>
+    </span>
   );
 }
 
@@ -144,6 +170,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
   const [username, setUsername] = useState(member.username ?? ''); const [tags, setTags] = useState(member.tags);
   const [bio, setBio] = useState(member.bio ?? ''); const [masteries, setMasteries] = useState<Mastery[]>(() => cleanMasteries(member.masteries));
   const [zone, setZone] = useState(member.timezone ?? deviceZone()); const [week, setWeek] = useState(() => cleanWeek(member.availability));
+  const [honor, setHonor] = useState(member.death_honor ?? '');
   const [cause, setCause] = useState(member.death_cause ?? ''); const [died, setDied] = useState(member.death_date ?? '');
   const [dateUnknown, setDateUnknown] = useState(!!member.death_date_unknown);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [saved, setSaved] = useState(false);
@@ -160,7 +187,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
     // start from what is saved now, not from an edit that was abandoned earlier
     setDisplay(member.display_name); setDiscord(member.discord_name ?? ''); setUsername(member.username ?? ''); setTags(member.tags);
     setBio(member.bio ?? ''); setMasteries(cleanMasteries(member.masteries)); setZone(member.timezone ?? deviceZone()); setWeek(cleanWeek(member.availability));
-    setCause(member.death_cause ?? ''); setDied(member.death_date ?? ''); setDateUnknown(!!member.death_date_unknown);
+    setHonor(member.death_honor ?? ''); setCause(member.death_cause ?? ''); setDied(member.death_date ?? ''); setDateUnknown(!!member.death_date_unknown);
     setError(''); setSaved(false); setEditing(true);
   };
   const save = (e: React.FormEvent) => {
@@ -170,9 +197,9 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
       else { const { error } = await supabase.rpc('update_my_profile', { p_display_name: display, p_discord_name: discord }); if (error) throw new Error(error.message); }
       // An officer sets another member's masteries; your own card saves itself below. The database checks the list either way.
       if (canManage && !self) { const { error } = await supabase.rpc('set_member_masteries', { p_id: member.id, p_masteries: masteries }); if (error) throw new Error(error.message); }
-      // How a character died and when is the officers' to write. It stays with the Deceased tag.
+      // The passage of honor, how a character died and when are the officers' to write. They stay with the Deceased tag.
       if (canManage && fallen && tags.includes('deceased')) {
-        const { error } = await supabase.rpc('set_death_record', { p_id: member.id, p_cause: cause, p_date: dateUnknown || !died ? null : died, p_unknown: dateUnknown });
+        const { error } = await supabase.rpc('set_death_record', { p_id: member.id, p_honor: honor, p_cause: cause, p_date: dateUnknown || !died ? null : died, p_unknown: dateUnknown });
         if (error) throw new Error(/not possible/.test(error.message) ? 'That date of passing is not possible. It cannot be in the future.' : error.message);
       }
       if (self) {
@@ -201,13 +228,14 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
       </Confirm>
     );
   }
+  // The fallen have no online status: what is left of them is on the card.
   const top = (
     <div className="member__top">
       <Tags tags={member.tags} />
-      <span className="roster__status">
+      {!fallen && <span className="roster__status">
         {st.status !== 'unknown' && !(onApp && st.status === 'offline') && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}</span>}
         {onApp && <span className="presence presence--app" title={ON_APP}>On the app</span>}
-      </span>
+      </span>}
     </div>
   );
   if (!editing) {
@@ -217,7 +245,10 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
         {fallen ? <Fallen member={member} /> : <About member={member} own={self} />}
         {member.discord_name && <p className="muted" style={{ marginTop: 12 }}>Discord: {member.discord_name}</p>}
         {saved && <p className="note" role="status">Saved.</p>}
-        <div className="row row--end" style={{ marginTop: 16 }}>
+        <div className="row" style={{ marginTop: 16 }}>
+          {/* a gesture for whoever reads a fallen clanmate's card; not one to make at your own */}
+          {fallen && !self && <PayRespect name={member.display_name} />}
+          <span style={{ flex: 1 }} />
           <button className="btn" onClick={onClose}>Close</button>
           {editable && <button className="btn btn--go" onClick={startEditing}>Edit</button>}
         </div>
@@ -242,6 +273,10 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
           </label>
         )}
         {fallen && canManage && <>
+          <label className="field"><span>Passage of honor</span>
+            <textarea value={honor} onChange={(e) => setHonor(e.target.value.slice(0, 1000))} maxLength={1000} rows={5} placeholder="Words in honor of the fallen: who they were to the clan, and what they are remembered for." />
+            <small className={honor.length >= 960 ? 'is-near' : ''}>{honor.length} of 1000 characters</small>
+          </label>
           <label className="field"><span>Cause of death</span>
             <textarea value={cause} onChange={(e) => setCause(e.target.value.slice(0, 500))} maxLength={500} rows={4} placeholder="How did this character meet their end?" />
             <small className={cause.length >= 480 ? 'is-near' : ''}>{cause.length} of 500 characters</small>
@@ -256,7 +291,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
             <small>Leave it empty until the date is known. Tick Date unknown and the card reads UNKNOWN.</small>
           </div>
         </>}
-        {fallen && !canManage && <p className="hint">This character has fallen. The cause of death and the date of passing are recorded by the clan's officers.</p>}
+        {fallen && !canManage && <p className="hint">This character has fallen. The passage of honor, the cause of death and the date of passing are recorded by the clan's officers.</p>}
         {(self || canManage) && <>
           <span className="label">Masteries</span>
           <MasteryPicker value={masteries} onChange={setMasteries} />
@@ -272,7 +307,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
           <TagPicker value={tags} onChange={setTags} mine={me.tags} />
           {tags.includes('deceased') !== fallen && <p className="hint">{fallen
             ? `Saving without the Deceased tag moves ${member.display_name} back to Members.`
-            : `Saving with the Deceased tag moves ${member.display_name} from Members to Deceased, where the cause of death and date of passing are recorded.`}</p>}
+            : `Saving with the Deceased tag moves ${member.display_name} from Members to Deceased, where a passage of honor, the cause of death and the date of passing are recorded.`}</p>}
         </>}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row" style={{ marginTop: 16 }}>
@@ -305,8 +340,9 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
 export default function ProfileCard({ onClose }: { onClose: () => void }) {
   const { profile } = useAuth();
   const [presence, setPresence] = useState<Presence | null>(null);
-  useEffect(() => { api<Presence>('discord.presence').then(setPresence).catch(() => undefined); }, []);
+  const fallen = isFallen(profile?.tags);
+  useEffect(() => { if (!fallen) api<Presence>('discord.presence').then(setPresence).catch(() => undefined); }, [fallen]);
   if (!profile) return null;
   // Your own save already refreshes your profile, and a tag change simply shows on the card.
-  return <MemberCard member={profile} me={profile} presence={presence} onApp onClose={onClose} onChanged={() => undefined} />;
+  return <MemberCard member={profile} me={profile} presence={presence} onApp={!fallen} onClose={onClose} onChanged={() => undefined} />;
 }

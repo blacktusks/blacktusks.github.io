@@ -11,11 +11,15 @@ for (const [name, opts] of [['desktop', { viewport: { width: 1440, height: 900 }
   await page.getByText('Durak Iron-Jaw').click(); await page.waitForSelector('.modal');
   await t.shot(page, `fallen-${name}-card-empty`);
   await page.locator('.modal').getByRole('button', { name: 'Edit', exact: true }).click(); await page.waitForTimeout(300);
+  await page.getByLabel('Passage of honor').fill('Durak stood where others ran. He asked for no song and no stone, only that the gate hold.\nThe fire of Largashbur remembers him.');
   await page.getByLabel('Cause of death').fill('Fell holding the gate of Largashbur against a giant, so the others could bar it behind him.');
   await page.getByLabel('Date of passing').fill('2026-10-03');
   await t.shot(page, `fallen-${name}-form`);
   await page.getByRole('button', { name: 'Save', exact: true }).click(); await page.waitForSelector('.modal .note');
   await t.shot(page, `fallen-${name}-card`);
+  await page.getByRole('button', { name: 'Pay Respect' }).click(); await page.waitForTimeout(420);
+  await t.shot(page, `fallen-${name}-respect`);
+  await page.waitForTimeout(1300);
   await page.locator('.modal').getByRole('button', { name: 'Close' }).click(); await page.waitForTimeout(300);
   await t.shot(page, `fallen-${name}-list`);
   await go('/roles'); await page.waitForSelector('.roles__row'); await t.shot(page, `fallen-${name}-roles`);

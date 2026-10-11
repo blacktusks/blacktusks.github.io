@@ -18,7 +18,7 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | Notice Board: change log | Forgemaster only. Each entry folds shut; the newest starts open. |
 | Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone (the card says so). Every card opens as members see it; an Edit button, shown only to those allowed, opens the form. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags, and can set another member's masteries (not their bio or hours). Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
 | Profile | The member's own card, straight from the main menu: the same pop-up as their name on the Members screen. |
-| Deceased | The same list as Members, over the members who carry the Deceased tag (they are listed here and not under Members). A fallen card has no bio and no hours; it carries a cause of death and a date of passing, both written by officers. The date is empty until one is entered, or reads UNKNOWN. |
+| Deceased | The same list as Members, over the members who carry the Deceased tag (they are listed here and not under Members). The fallen have no online status. A fallen card has no bio and no hours; it carries a passage of honor, a cause of death and a date of passing, all written by officers. The date is empty until one is entered, or reads UNKNOWN. Anyone reading the card can press Pay Respect: green praying hands and a fire rise from the button and fade (nothing is saved). |
 | Roles | A short description of every tag. Officers can put the clan's own words in place of any of them. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
 | Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
@@ -39,7 +39,7 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
 
 1. Create a project at supabase.com (free plan).
-2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0006_...`). They are safe to re-run.
+2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0007_...`). They are safe to re-run.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
 4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
 5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
@@ -88,8 +88,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 309 permission checks against real Postgres rules
-node tests/e2e.mjs       # 178 browser checks of every screen and role
+node tests/api.mjs       # 319 permission checks against real Postgres rules
+node tests/e2e.mjs       # 188 browser checks of every screen and role
 node tests/look_fit.mjs  # the main menu at 27 screen sizes: nothing off-screen, overlapping or scrolling
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```

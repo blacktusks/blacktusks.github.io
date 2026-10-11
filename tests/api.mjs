@@ -451,5 +451,29 @@ console.log('bow mastery, and officers setting masteries through the database');
   ok((await nick.from('audit_log').select('*').eq('action', 'member.masteries_set')).data.length >= 3, 'each change is written to the audit log');
 }
 
+
+console.log('passage of honor');
+{
+  const born = await nick.api('admin.create', { username: 'Fallen2', display_name: 'Yamarz the Unlucky', tags: ['kinsmen', 'deceased'] });
+  const id = born.data?.profile?.id;
+  ok((await nick.rpc('member_admin_list')).data.find((m) => m.id === id)?.death_honor === '', 'a fallen card starts with no passage of honor');
+  const rec = await sharn.rpc('set_death_record', { p_id: id, p_honor: '  He held the line so the clan could bar the gate.  ', p_cause: 'A giant.', p_date: '2026-10-02', p_unknown: false });
+  ok(rec.data?.death_honor === 'He held the line so the clan could bar the gate.' && rec.data.death_cause === 'A giant.' && rec.data.death_date === '2026-10-02',
+    'an officer writes the passage of honor with the cause and the date', rec.error?.message);
+  ok((await velyn.from('profiles').select('death_honor').eq('id', id).single()).data.death_honor.startsWith('He held the line'), 'every member reads it');
+  const old = await gorza.rpc('set_death_record', { p_id: id, p_cause: 'A giant, at the gate.', p_date: null, p_unknown: true });
+  ok(old.data?.death_honor === 'He held the line so the clan could bar the gate.' && old.data.death_cause === 'A giant, at the gate.' && old.data.death_date_unknown === true,
+    'a copy of the app from before the passage still saves the rest and leaves the passage alone', old.error?.message);
+  ok((await sharn.rpc('set_death_record', { p_id: id, p_honor: 'x'.repeat(1001), p_cause: '', p_date: null, p_unknown: false })).error, 'a passage over 1000 characters is refused');
+  ok(!(await sharn.rpc('set_death_record', { p_id: id, p_honor: 'x'.repeat(1000), p_cause: 'A giant.', p_date: null, p_unknown: false })).error, 'one of exactly 1000 is kept');
+  ok((await ugak.rpc('set_death_record', { p_id: id, p_honor: 'Mine now', p_cause: '', p_date: null, p_unknown: false })).error, 'a member cannot write a passage of honor');
+  ok((await guest.rpc('set_death_record', { p_id: id, p_honor: 'x', p_cause: '', p_date: null, p_unknown: false })).error, 'nor a guest');
+  const g = await guest.from('profiles').select('death_honor');
+  ok(g.error || g.data.length === 0, 'guests read no passages');
+  const cleared = await sharn.rpc('set_death_record', { p_id: id, p_honor: '   ', p_cause: 'A giant.', p_date: null, p_unknown: false });
+  ok(cleared.data?.death_honor === '' && cleared.data.death_cause === 'A giant.', 'a passage can be taken back out');
+  await nick.api('admin.delete', { id });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
