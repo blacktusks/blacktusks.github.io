@@ -172,6 +172,7 @@ await sharn.context().close(); await go(sheo, '/code', 300);
 
 console.log('mining map');
 await go(ugak, '/map', 2500);
+ok((await ugak.title()) === 'Mining Map | Black Tusk Companion', 'the map names its browser tab', await ugak.title());
 { // the map always covers its frame: zoom all the way out and drag hard in every direction
   const box = await ugak.locator('.map').boundingBox();
   const covered = () => ugak.evaluate(() => {
@@ -228,6 +229,7 @@ ok((await velyn.locator('.ore').count()) === 1, 'unticking an ore hides its mark
 console.log('pricing ledger');
 await velyn.context().close(); await go(nick, '/code', 300);
 await go(ugak, '/ledger', 1800);
+ok((await ugak.title()) === 'Pricing Ledger | Black Tusk Companion', 'the ledger names its browser tab', await ugak.title());
 ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 4000, 'the ledger lists thousands of items');
 ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no Keys section');
 await ugak.getByLabel('Filter by name').fill('iron ingot'); await ugak.waitForTimeout(400); await ugak.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await ugak.waitForTimeout(500);

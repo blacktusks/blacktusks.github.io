@@ -7,7 +7,7 @@ import { autoAcquire, autoUses, customItems, loadDetails, loadItems, type Cat, t
 import { cutout, type Cutout } from '../lib/cutout';
 import type { LedgerEntry } from '../lib/types';
 import { Scene } from '../components/Scene';
-import { Confirm, Modal, num } from '../components/ui';
+import { Confirm, Modal, num, useTitle } from '../components/ui';
 
 type CatId = 'fav' | 'all' | Cat;
 const ICON: Record<CatId, string> = {
@@ -158,6 +158,7 @@ function AddItem({ onClose, onSaved }: { onClose: () => void; onSaved: (key: str
 }
 
 export default function Ledger() {
+  useTitle('Pricing Ledger');
   const { profile } = useAuth(); const herald = isHerald(profile!.tags);
   const [params, setParams] = useSearchParams();
   const [base, setBase] = useState<Item[] | null>(null); const [details, setDetails] = useState<Record<string, Detail> | null>(null);

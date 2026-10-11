@@ -13,11 +13,17 @@ export function Tags({ tags }: { tags: string[] }) {
   return <span className="tags">{sortTags(tags).map((t) => <TagChip key={t} id={t} />)}</span>;
 }
 
+/** Names the browser tab after the screen that is showing. */
+export function useTitle(title: string) {
+  useEffect(() => { document.title = `${title} | Black Tusk Companion`; }, [title]);
+}
+
 /** Frame for every screen behind the main menu. */
 export function Page({ title, sub, children, bar, width }: {
   title: string; sub?: ReactNode; children: ReactNode; bar?: ReactNode; width?: 'wide' | 'full';
 }) {
-  useEffect(() => { document.title = `${title} | Black Tusk Companion`; window.scrollTo(0, 0); }, [title]);
+  useTitle(title);
+  useEffect(() => { window.scrollTo(0, 0); }, [title]);
   return (
     <>
       <Scene quiet />

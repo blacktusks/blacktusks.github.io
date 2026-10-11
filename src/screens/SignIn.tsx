@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Scene } from '../components/Scene';
+import { useTitle } from '../components/ui';
 import { stay } from '../lib/supabase';
 
 export default function SignIn() {
+  useTitle('Sign In');
   const { signIn } = useAuth();
   const go = useNavigate();
   const [name, setName] = useState(''); const [password, setPassword] = useState('');

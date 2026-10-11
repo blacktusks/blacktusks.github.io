@@ -9,7 +9,7 @@ import { isHerald } from '../lib/roles';
 import { KIND, KINDS, ORE, ORES } from '../lib/ores';
 import { PROFILE_COLUMNS, type OreMarker, type Profile } from '../lib/types';
 import { Scene } from '../components/Scene';
-import { Confirm, ago } from '../components/ui';
+import { Confirm, ago, useTitle } from '../components/ui';
 
 interface Geo { x0: number; y1: number; px_per_cell: number; w: number; h: number; max_zoom: number }
 type Place = [name: string, type: string, x: number, y: number, server: number];
@@ -82,6 +82,7 @@ function MarkerForm({ draft, places, herald, onChange, onCancel, onSaved }: {
 }
 
 export default function MiningMap() {
+  useTitle('Mining Map');
   const { profile } = useAuth(); const me = profile!; const herald = isHerald(me.tags);
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null); const geoRef = useRef<Geo | null>(null);

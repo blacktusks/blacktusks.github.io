@@ -85,7 +85,7 @@ npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
 node tests/api.mjs       # 250 permission checks against real Postgres rules
-node tests/e2e.mjs       # 87 browser checks of every screen and role
+node tests/e2e.mjs       # 89 browser checks of every screen and role
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```
 
