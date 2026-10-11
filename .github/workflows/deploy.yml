@@ -5,9 +5,13 @@
 # removes the zip, then builds and publishes as usual. The .github folder is
 # never taken from a zip; edit workflow files here on GitHub.
 #
-# The map tiles (public/map) are most of the project's size and rarely change.
-# A zip that leaves that folder out keeps the map already in the repository, so
-# everyday updates stay small. Include the folder only when the map itself changed.
+# The map tiles (public/map) and the item pictures (public/items) are most of the
+# project's size and rarely change. A zip that leaves those folders out keeps the
+# ones already in the repository, so everyday updates stay small.
+#
+# Item pictures travel on their own: upload zips named pictures-1.zip, pictures-2.zip
+# and so on (any number, with or without the app zip). Their .webp files are added
+# to public/items, replacing pictures of the same name.
 name: Deploy to GitHub Pages
 on:
   push:
@@ -27,33 +31,47 @@ jobs:
       present: ${{ steps.app.outputs.present }}
     steps:
       - uses: actions/checkout@v7
-      - name: Unpack an uploaded zip, if there is one
+      - name: Unpack uploaded zips, if there are any
         run: |
           set -euo pipefail
-          shopt -s nullglob dotglob
+          shopt -s nullglob dotglob nocasematch
           zips=(*.zip)
           if [ ${#zips[@]} -eq 0 ]; then echo "No zip to unpack."; exit 0; fi
-          zip="${zips[0]}"
-          mkdir "$RUNNER_TEMP/src"
-          unzip -q "$zip" -d "$RUNNER_TEMP/src"
-          src="$RUNNER_TEMP/src"
-          entries=("$src"/*)
-          if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then src="${entries[0]}"; fi
-          if [ ! -f "$src/package.json" ]; then echo "::error::$zip does not contain the app (no package.json at its top)."; exit 1; fi
-          rm -rf "$src/.github" "$src/.git"
-          kept_map=""
-          if [ ! -d "$src/public/map" ] && [ -d public/map ]; then
-            kept_map="$RUNNER_TEMP/map-kept"; mv public/map "$kept_map"; echo "The zip has no map; keeping the one in the repository."
-          fi
-          for f in *; do
-            case "$f" in .git|.github) ;; *) rm -rf -- "$f" ;; esac
+          app=""; pics=(); hold="$RUNNER_TEMP/picture-zips"; mkdir -p "$hold"
+          for z in "${zips[@]}"; do
+            if [[ "$z" == pictures*.zip ]]; then mv -- "$z" "$hold/"; pics+=("$hold/$z"); else app="$z"; fi
           done
-          cp -a "$src"/. .
-          if [ -n "$kept_map" ]; then mkdir -p public; mv "$kept_map" public/map; fi
+          if [ -n "$app" ]; then
+            mkdir "$RUNNER_TEMP/src"
+            unzip -q "$app" -d "$RUNNER_TEMP/src"
+            src="$RUNNER_TEMP/src"
+            entries=("$src"/*)
+            if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then src="${entries[0]}"; fi
+            if [ ! -f "$src/package.json" ]; then echo "::error::$app does not contain the app (no package.json at its top)."; exit 1; fi
+            rm -rf "$src/.github" "$src/.git"
+            kept="$RUNNER_TEMP/kept"; mkdir -p "$kept"
+            for big in map items; do
+              if [ ! -d "$src/public/$big" ] && [ -d "public/$big" ]; then
+                mv "public/$big" "$kept/$big"; echo "The zip has no public/$big; keeping the one in the repository."
+              fi
+            done
+            for f in *; do
+              case "$f" in .git|.github) ;; *) rm -rf -- "$f" ;; esac
+            done
+            cp -a "$src"/. .
+            for big in map items; do
+              if [ -d "$kept/$big" ]; then mkdir -p public; mv "$kept/$big" "public/$big"; fi
+            done
+          fi
+          for z in "${pics[@]}"; do
+            mkdir -p public/items
+            unzip -q -o -j "$z" '*.webp' -d public/items
+            echo "Added the pictures in $(basename "$z"); public/items now holds $(ls public/items | wc -l)."
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Unpack $zip"
+          git commit -q -m "Unpack ${app:-item pictures}"
           git push
       - id: app
         run: echo "present=$([ -f package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
