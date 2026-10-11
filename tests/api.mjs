@@ -425,5 +425,31 @@ console.log('0.2.5: roles');
   ok((await gorza.from('role_notes').delete().eq('tag', 'blooded').select()).data.length === 1 && (await ugak.from('role_notes').select('*')).data.length === 0, 'an officer hands a description back to the app');
 }
 
+
+console.log('bow mastery, and officers setting masteries through the database');
+{
+  const mine = await ugak.rpc('update_my_card', { p_bio: 'Hunter.', p_masteries: [{ skill: 'bow', level: 4 }, { skill: 'skinner', level: 2 }], p_timezone: null, p_availability: null });
+  ok(!mine.error && mine.data.masteries[0].skill === 'bow' && mine.data.masteries[0].level === 4, 'a member claims the Bow mastery on their own card', mine.error?.message);
+  ok((await velyn.from('profiles').select('masteries').eq('id', ugak.me).single()).data.masteries[0].skill === 'bow', 'and everyone sees it');
+  ok((await ugak.rpc('update_my_card', { p_bio: '', p_masteries: [{ skill: 'bow', level: 1 }, { skill: 'bow', level: 2 }], p_timezone: null, p_availability: null })).error, 'Bow twice is refused like any other');
+  const set = await sharn.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: [{ skill: 'bow', level: 5 }, { skill: 'one_handed', level: 1 }] });
+  ok(!set.error && set.data.masteries.length === 2 && set.data.masteries[0].skill === 'bow', "an officer sets another member's masteries, Bow included", set.error?.message);
+  ok((await ugak.from('profiles').select('masteries, bio').eq('id', velyn.me).single()).data.masteries[0].level === 5, 'and the change is there for everyone');
+  ok((await ugak.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: [] })).error?.message.includes('officers'), "a Blooded member cannot set someone else's masteries this way");
+  ok((await velyn.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: [] })).error?.message.includes('officers'), 'nor their own, which goes through their own card');
+  ok((await guest.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: [] })).error, 'guests are refused');
+  ok((await sharn.rpc('set_member_masteries', { p_id: nick.me, p_masteries: [{ skill: 'bow', level: 5 }] })).error?.message.includes('Forgemaster'), "an officer cannot set a Forgemaster's masteries");
+  ok((await sharn.rpc('set_member_masteries', { p_id: gorza.me, p_masteries: [{ skill: 'bow', level: 5 }] })).error?.message.includes('Chieftain'), "nor the Chieftain's, unless they are the Chieftain or a Forgemaster");
+  ok(!(await nick.rpc('set_member_masteries', { p_id: gorza.me, p_masteries: [{ skill: 'bow', level: 3 }] })).error, "the Forgemaster can set the Chieftain's");
+  for (const [bad, why] of [[[{ skill: 'dragon_rider', level: 1 }], 'an unknown mastery'], [[{ skill: 'bow', level: 9 }], 'a level above 5'],
+    [[{ skill: 'bow', level: 1 }, { skill: 'bow', level: 2 }], 'the same skill twice'], [['bow', 'cook', 'miner', 'tailor'].map((skill) => ({ skill, level: 1 })), 'four masteries'], [{ skill: 'bow', level: 1 }, 'a list that is not a list']]) {
+    ok((await sharn.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: bad })).error, `an officer is refused ${why}`);
+  }
+  ok((await ugak.from('profiles').select('masteries').eq('id', velyn.me).single()).data.masteries.length === 2, 'refused changes leave the masteries as they were');
+  ok((await sharn.rpc('set_member_masteries', { p_id: velyn.me, p_masteries: null })).data?.masteries.length === 0, 'an officer can clear them');
+  ok((await sharn.rpc('set_member_masteries', { p_id: '00000000-0000-4000-8000-000000000000', p_masteries: [] })).error, 'a member who does not exist is refused');
+  ok((await nick.from('audit_log').select('*').eq('action', 'member.masteries_set')).data.length >= 3, 'each change is written to the audit log');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

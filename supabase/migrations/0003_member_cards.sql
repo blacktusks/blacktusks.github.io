@@ -18,7 +18,7 @@ language sql immutable set search_path = '' as $$
          or (select count(*) from jsonb_object_keys(e)) <> 2
          or jsonb_typeof(e -> 'skill') is distinct from 'string'
          or jsonb_typeof(e -> 'level') is distinct from 'number'
-         or (e ->> 'skill') not in ('one_handed', 'two_handed', 'dual_wielder', 'armor', 'shield', 'cook', 'alchemist',
+         or (e ->> 'skill') not in ('one_handed', 'two_handed', 'dual_wielder', 'bow', 'armor', 'shield', 'cook', 'alchemist',
               'blacksmith', 'woodcutter', 'tailor', 'scholar', 'miner', 'first_aid', 'lockpicking', 'skinner',
               'harvester', 'artifact_scavenger')
          or (e ->> 'level') not in ('0', '1', '2', '3', '4', '5'))

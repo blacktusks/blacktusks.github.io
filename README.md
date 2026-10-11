@@ -39,7 +39,7 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 Use a Supabase project made for this app alone: the migration takes away the default access to every table in the `public` schema and grants back only what the app uses.
 
 1. Create a project at supabase.com (free plan).
-2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0005_...`). They are safe to re-run.
+2. **SQL Editor**: paste and run each file in `supabase/migrations`, in number order (`0001_...` to `0006_...`). They are safe to re-run.
 3. **Authentication > Sign In / Providers**: turn off "Allow new users to sign up". Leave "Confirm email" on. Every account is made by the app with its email already confirmed, so nothing needs it off, and leaving it on stops a member changing their own sign-in.
 4. **Edge Functions**: deploy `supabase/functions/clan-api` (`supabase functions deploy clan-api --no-verify-jwt`, or paste `index.ts` into a new function named `clan-api` in the dashboard). Then open the function's **Settings** and turn **off** "Verify JWT with legacy secret": that check only understands Supabase's old API keys, and the function already verifies every caller against Supabase Auth itself.
 5. **Edge Functions > Secrets**: add `VAULT_KEY`, 32 random bytes in base64. Generate one with `openssl rand -base64 32` (PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`). Keep a copy somewhere safe: without it the saved password copies cannot be read.
@@ -88,8 +88,8 @@ After that, every change to `main` is built and published by `.github/workflows/
 npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
-node tests/api.mjs       # 289 permission checks against real Postgres rules
-node tests/e2e.mjs       # 177 browser checks of every screen and role
+node tests/api.mjs       # 309 permission checks against real Postgres rules
+node tests/e2e.mjs       # 178 browser checks of every screen and role
 node tests/look_fit.mjs  # the main menu at 27 screen sizes: nothing off-screen, overlapping or scrolling
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```

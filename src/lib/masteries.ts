@@ -1,4 +1,5 @@
-// The seventeen masteries a member can claim (three at most), each with a level from 0 to 5.
+// The eighteen masteries a member can claim (three at most), each with a level from 0 to 5.
+// The list is kept in two places: here, and in valid_masteries() in the database, which has the last word.
 // The ids are what the database stores; changing a label here changes it everywhere.
 export interface Mastery { skill: string; level: number }
 
@@ -12,6 +13,8 @@ export const SKILLS: Skill[] = [
     lines: ['M12 2.5 V21.5', 'M12 7.5 L6 4.5 Q2.5 9.5 6 14.5 L12 11.5', 'M12 7.5 L18 4.5 Q21.5 9.5 18 14.5 L12 11.5', 'M10.4 21.5 H13.6'] },
   { id: 'dual_wielder', label: 'Dual Wielder',
     lines: ['M7 17 L20 4', 'M4 14.5 L9.5 20', 'M6.6 17.4 L4.2 19.8', 'M17 17 L4 4', 'M20 14.5 L14.5 20', 'M17.4 17.4 L19.8 19.8'] },
+  { id: 'bow', label: 'Bow',
+    lines: ['M8 2.5 C17.5 5.5 17.5 18.5 8 21.5', 'M8 2.5 L5 12 L8 21.5', 'M5 12 H21.5', 'M18.4 9.2 L21.5 12 L18.4 14.8'] },
   { id: 'armor', label: 'Armor',
     lines: ['M8 3.5 L5 5 L3.5 9 L6.5 10.5 V20.5 H17.5 V10.5 L20.5 9 L19 5 L16 3.5 C15 5.6 9 5.6 8 3.5 Z', 'M12 8.5 V20.5', 'M6.5 16 H17.5'] },
   { id: 'shield', label: 'Shield',

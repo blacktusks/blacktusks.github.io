@@ -181,11 +181,13 @@ await go(nick, '/members', 900); await nick.waitForSelector('.roster__row');
   ok((await nick.locator('.modal').getByLabel('Bio').count()) === 0 && (await nick.locator('.availedit').count()) === 0, "an officer cannot rewrite another member's bio or hours");
   ok((await nick.locator('.masterypick__row').count()) === 2, 'but the officer is offered their masteries');
   await nick.locator('.masterypick__row').nth(1).getByRole('button', { name: 'Level 3' }).click();
-  await nick.getByRole('button', { name: 'Add a mastery' }).click(); await nick.getByLabel('Mastery 3').selectOption('miner');
+  await nick.getByRole('button', { name: 'Add a mastery' }).click();
+  ok((await nick.getByLabel('Mastery 3').locator('option').allTextContents()).slice(0, 5).join('|') === 'One Handed|Two Handed|Dual Wielder|Bow|Armor', 'Bow is among the masteries, with the other weapons', (await nick.getByLabel('Mastery 3').locator('option').allTextContents()).join('|'));
+  await nick.getByLabel('Mastery 3').selectOption('bow');
   await nick.locator('.masterypick__row').nth(2).getByRole('button', { name: 'Level 2' }).click();
   await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nick.waitForSelector('.note'); await nick.waitForTimeout(500);
   const after = (await nick.locator('.modal .about').textContent()).replace(/\s+/g, ' ');
-  ok(/Lvl 3\s*Lockpicking/.test(after) && /Lvl 2\s*Miner/.test(after) && after.includes('Buys pelts'), "an officer changes another member's masteries; their bio is untouched", after.slice(0, 160));
+  ok(/Lvl 3\s*Lockpicking/.test(after) && /Lvl 2\s*Bow/.test(after) && after.includes('Buys pelts'), "an officer changes another member's masteries; their bio is untouched", after.slice(0, 160));
   await nick.getByRole('button', { name: 'Close' }).first().click(); await nick.waitForTimeout(300);
   {
     const far = await t.open({ timezoneId: 'Europe/London' }); await t.signIn(far, 'ugak'); await go(far, '/members', 900);

@@ -166,9 +166,10 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     void run(async () => {
-      // An officer sets another member's masteries with the rest of their profile; your own card saves itself below.
-      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}), ...(self ? {} : { masteries }) });
+      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}) });
       else { const { error } = await supabase.rpc('update_my_profile', { p_display_name: display, p_discord_name: discord }); if (error) throw new Error(error.message); }
+      // An officer sets another member's masteries; your own card saves itself below. The database checks the list either way.
+      if (canManage && !self) { const { error } = await supabase.rpc('set_member_masteries', { p_id: member.id, p_masteries: masteries }); if (error) throw new Error(error.message); }
       // How a character died and when is the officers' to write. It stays with the Deceased tag.
       if (canManage && fallen && tags.includes('deceased')) {
         const { error } = await supabase.rpc('set_death_record', { p_id: member.id, p_cause: cause, p_date: dateUnknown || !died ? null : died, p_unknown: dateUnknown });
