@@ -100,8 +100,8 @@
 .resedit__row { display: grid; grid-template-columns: minmax(0, 2fr) 90px minmax(0, 1fr) minmax(0, 1.4fr) auto auto; gap: 6px; align-items: center; }
 @media (max-width: 640px) { .resedit__row { grid-template-columns: 1fr 90px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); } }
 /* ── mining map ── */
-/* Pinned to the screen's edges, like the main menu, so the map always has exactly the room that is left. */
-.mapscreen { position: fixed; inset: 0; min-height: 0; }
+/* Pinned to the screen, like the main menu, so the map always has exactly the room that is left. */
+.mapscreen { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); min-height: 0; }
 .mapscreen__head { padding-top: calc(var(--safe-t) + 10px); }
 .mapscreen__head .page__title { font-size: clamp(20px, 3.4vw, 30px); }
 .mapwrap { position: relative; flex: 1; min-height: 0; margin-top: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -172,7 +172,7 @@
   .mapkey { left: 8px; top: 8px; width: 214px; }
 }
 /* ── pricing ledger: the SkyUI inventory layout ── */
-.ledger { position: fixed; inset: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 57fr) minmax(0, 43fr); grid-template-rows: minmax(0, 1fr) auto; padding-top: var(--safe-t); }
+.ledger { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); min-height: 0; display: grid; grid-template-columns: minmax(0, 57fr) minmax(0, 43fr); grid-template-rows: minmax(0, 1fr) auto; padding-top: var(--safe-t); }
 .ledger__list { display: flex; flex-direction: column; min-height: 0; margin-left: clamp(0px, 3vw, 54px); background: rgba(0, 0, 0, 0.66); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 .lcats { display: flex; justify-content: center; gap: clamp(0px, 0.6vw, 8px); padding: 10px 8px 0; border-bottom: 1px solid var(--line); }
 .lcats__one { position: relative; width: 44px; height: 46px; display: grid; place-items: center; border: 0; background: none; color: var(--bone-3); cursor: pointer; transition: color 0.15s; flex: 0 1 auto; min-width: 30px; }

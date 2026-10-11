@@ -172,7 +172,7 @@ export default function Ledger() {
   const [base, setBase] = useState<Item[] | null>(null); const [details, setDetails] = useState<Record<string, Detail> | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]); const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
   const [cat, setCat] = useState<CatId>('all'); const [search, setSearch] = useState(''); const [type, setType] = useState(''); const [source, setSource] = useState('');
-  const [variants, setVariants] = useState(false); const [pricedOnly, setPricedOnly] = useState(false); const [showHidden, setShowHidden] = useState(false);
+  const [pricedOnly, setPricedOnly] = useState(false); const [showHidden, setShowHidden] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 });
   const [picked, setPicked] = useState<string | null>(params.get('item'));
   const [favs, setFavs] = useState<Set<string>>(readFavs);
@@ -213,7 +213,6 @@ export default function Ledger() {
     const out = inCat.filter((i) => {
       const e = entry.get(i.key);
       if (hiddenKeys.has(i.key) && !(herald && showHidden) && !(herald && i.key === picked)) return false;
-      if (i.generic && !variants && cat !== 'fav' && !e && i.key !== picked) return false;
       if (type && i.type !== type) return false;
       if (source && i.src !== source) return false;
       if (pricedOnly && e?.price == null) return false;
@@ -231,10 +230,10 @@ export default function Ledger() {
       if (x == null) return 1; if (y == null) return -1;       // unknowns always last
       return x < y ? -dir : x > y ? dir : a.lower < b.lower ? -1 : 1;
     });
-  }, [inCat, entry, hiddenKeys, herald, showHidden, variants, cat, type, source, pricedOnly, search, sort, picked]);
+  }, [inCat, entry, hiddenKeys, herald, showHidden, type, source, pricedOnly, search, sort, picked]);
 
   useEffect(() => { setType(''); setSource(''); listRef.current?.scrollTo(0, 0); }, [cat]);
-  useEffect(() => { listRef.current?.scrollTo(0, 0); }, [search, type, source, variants, pricedOnly, sort]);
+  useEffect(() => { listRef.current?.scrollTo(0, 0); }, [search, type, source, pricedOnly, sort]);
 
   // deep link from the Mining Map: scroll the picked item into view once
   const jumped = useRef(false);
@@ -277,7 +276,6 @@ export default function Ledger() {
             <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type"><option value="">Any type</option>{types.map((t) => <option key={t}>{t}</option>)}</select>
             <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source"><option value="">Any source</option>{sources.map((t) => <option key={t}>{t}</option>)}</select>
             <label className="check small"><input type="checkbox" checked={pricedOnly} onChange={(e) => setPricedOnly(e.target.checked)} />Priced</label>
-            <label className="check small" title="Generic loot versions such as “Iron Sword of Embers”"><input type="checkbox" checked={variants} onChange={(e) => setVariants(e.target.checked)} />Enchanted variants</label>
             {herald && <label className="check small"><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />Hidden</label>}
           </div>
           <div className="lhead" role="row">

@@ -5,27 +5,27 @@ export type Cat = 'weapons' | 'apparel' | 'potions' | 'scrolls' | 'food' | 'ingr
 const CATS: Cat[] = ['weapons', 'apparel', 'potions', 'scrolls', 'food', 'ingredients', 'books', 'misc'];
 export interface Item {
   key: string; name: string; cat: Cat; type: string; cls: string; value: number; weight: number;
-  stat: number | null; src: string; generic: boolean; enchanted: boolean; custom?: boolean; lower: string;
-  /** Name of the item's picture in /items, rendered from its game model. Absent when there is none. */
+  stat: number | null; src: string; enchanted: boolean; custom?: boolean; lower: string;
+  /** The item's picture in /items, rendered from its game model: its name, then a stamp of its contents. Absent when there is none. */
   pic?: string;
 }
 export interface Recipe { b: string; n: number; i: [string, number][]; r?: string; x?: 1 }
 export interface Detail {
-  d?: string; fx?: string[]; en?: string; mk?: Recipe[]; mkn?: number; tp?: { b: string; i: [string, number][] };
+  d?: string; fx?: string[]; en?: string; mk?: Recipe[]; mkn?: number;
   bd?: [string, number][]; us?: string[]; usn?: number; hv?: string[];
 }
 
 let itemsPromise: Promise<Item[]> | null = null;
 export function loadItems(): Promise<Item[]> {
-  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; pics?: string[]; items: any[][] }) =>
+  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; pics?: string[]; picv?: string[]; items: any[][] }) =>
     d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags, pic]) => ({
-      key, name, cat, type, cls, value, weight, stat, src: d.sources[src], generic: !!(flags & 1), enchanted: !!(flags & 2), lower: name.toLowerCase(),
-      pic: pic != null && pic >= 0 ? d.pics?.[pic] : undefined,
+      key, name, cat, type, cls, value, weight, stat, src: d.sources[src], enchanted: !!(flags & 2), lower: name.toLowerCase(),
+      pic: pic != null && pic >= 0 && d.pics?.[pic] ? `${d.pics[pic]}.webp${d.picv?.[pic] ? `?v=${d.picv[pic]}` : ''}` : undefined,
     })));
   return itemsPromise;
 }
-/** Address of an item's rendered picture. */
-export const itemPictureUrl = (pic: string) => `./items/${pic}.webp`;
+/** Address of an item's rendered picture. The stamp in it changes when the picture does, so an old copy is never shown. */
+export const itemPictureUrl = (pic: string) => `./items/${pic}`;
 
 let detailsPromise: Promise<Record<string, Detail>> | null = null;
 export function loadDetails(): Promise<Record<string, Detail>> {
@@ -38,7 +38,7 @@ export function customItems(entries: LedgerEntry[]): Item[] {
     const c = e.custom!; const name = String(c.name);
     return {
       key: e.item_key, name, cat: (CATS.includes(c.cat as Cat) ? c.cat : 'misc') as Cat, type: String(c.type || 'Misc'), cls: '', value: Number(c.value) || 0,
-      weight: Number(c.weight) || 0, stat: null, src: 'Added by the clan', generic: false, enchanted: false, custom: true, lower: name.toLowerCase(),
+      weight: Number(c.weight) || 0, stat: null, src: 'Added by the clan', enchanted: false, custom: true, lower: name.toLowerCase(),
     };
   });
 }
@@ -78,7 +78,6 @@ export function autoAcquire(item: Item, d: Detail | undefined): { made: boolean;
   if (!open.length && d?.mk?.some((r) => r.x)) out.push('Restricted design on Daedric Online: it cannot be crafted.');
   if (d?.hv?.length) out.push(`Harvested from ${list(d.hv, 4)}.`);
   if (item.type === 'Ore') out.push('Mined from ore veins. See the Mining Map.');
-  if (d?.tp) out.push(`Improved at a ${d.tp.b.toLowerCase()} with ${parts(d.tp.i)}.`);
   if (!open.length && !d?.hv?.length && item.type !== 'Ore') out.unshift('Found: looted, bought or traded for. Not craftable.');
   return { made: open.length > 0, text: out.join(' ') };
 }

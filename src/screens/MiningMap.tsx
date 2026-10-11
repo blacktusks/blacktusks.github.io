@@ -119,7 +119,7 @@ export default function MiningMap() {
 
   // build the map once
   useEffect(() => {
-    let dead = false;
+    let dead = false; let sizer: ResizeObserver | null = null;
     (async () => {
       const [geo, pl] = await Promise.all([fetch('./map/map.json').then((r) => r.json()), fetch(dataUrl('places.json')).then((r) => r.json())]);
       if (dead || !el.current) return;
@@ -164,10 +164,11 @@ export default function MiningMap() {
         if (el.current) el.current.dataset.view = [nw.x, nw.y, se.x, se.y].map(Math.round).join(',');
       };
       map.on('moveend zoomend resize', noteView); noteView();
+      if (typeof ResizeObserver !== 'undefined') { sizer = new ResizeObserver(() => map.invalidateSize({ pan: false })); sizer.observe(el.current); }
       setPlaces(pl.places); setMapReady(true);
     })();
     void load();
-    return () => { dead = true; mapRef.current?.remove(); mapRef.current = null; };
+    return () => { dead = true; sizer?.disconnect(); mapRef.current?.remove(); mapRef.current = null; };
   }, [load]);
 
   // place names

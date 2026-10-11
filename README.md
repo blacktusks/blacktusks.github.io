@@ -28,8 +28,8 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 
 - **App**: React and Vite, published as static files to GitHub Pages. `vite-plugin-pwa` makes it installable and lets the app shell open offline.
 - **Backend**: a free Supabase project. Supabase Auth holds the accounts; Postgres row level security enforces every permission in the table above; one Edge Function (`clan-api`) handles account management and reads the clan Discord's Server Widget.
-- **Game data**: `public/data` (about 9,600 items, their recipes and 402 map places), `public/map` (the world map) and `public/items` (a picture of every item) are built from the game files of a Daedric Online install by the scripts in `tools/`.
-- **Starting up**: a loading screen written into `index.html` covers the app until the fonts, the member's session and the first screen's pictures are all in (`src/lib/splash.ts`). The main menu, the map and the ledger are pinned to the edges of the screen and sized from their own box, so nothing sits off-screen on a phone.
+- **Game data**: `public/data` (about 4,200 items, their recipes and 402 map places), `public/map` (the world map) and `public/items` (a picture of every item) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+- **Starting up**: a loading screen written into `index.html` covers the app until the fonts, the member's session and the first screen's pictures are all in (`src/lib/splash.ts`). The main menu, the map and the ledger are pinned to the screen and sized from their own box, so nothing sits off-screen on a phone. Opened from the home screen, an iPhone can start the app with a page that is shorter than the screen by the height of the status bar (WebKit bug 254868); a small script at the top of `index.html` spots the home-screen app and sizes every full-screen layer from the screen itself (`--full`), so no band is left along the bottom.
 
 ## Setting up the backend (once)
 
@@ -112,7 +112,7 @@ python tools/build_tiles.py map_shaded.png map_geo.json public/map
 
 The extractors only read. Paths to the game folder are at the top of `extract_game_data.py`.
 
-Left out of the ledger at the clan's request (see `unwanted` in `build_catalog.py`): keys, every book except spell tomes and the Code of Malacath, and from Misc the clutter, dragon claws, untyped "Misc" items and every tool but the lockpick and linen wrap.
+Left out of the ledger at the clan's request (see `unwanted` in `build_catalog.py`): keys, every book except spell tomes and the Code of Malacath, from Misc the clutter, dragon claws, untyped "Misc" items and every tool but the lockpick and linen wrap, and the generic enchanted variants of ordinary gear ("Iron Sword of Embers"; named enchanted items stay). Grindstone and workbench recipes are left out too: the realm has no weapon or armor improvement.
 
 ### Item pictures
 
@@ -132,7 +132,7 @@ python tools/pack_pictures.py <renders folder> public/items <jobs.json>      # 3
 python tools/build_catalog.py <raw folder> public/data <out>/probe_items.json # ties each item to its picture
 ```
 
-Items that share a model and textures share a picture, so about 9,600 items need about 2,650 pictures. A model with an inventory marker is shown from the angle the game's own inventory uses; one without is shown from the front, or from above if it lies flat. A handful of items have no model in the game files at all and keep the category mark instead.
+Items that share a model and textures share a picture, so about 4,200 items need about 2,650 pictures. A model with an inventory marker is shown from the angle the game's own inventory uses; one without is shown from the front, or from above if it lies flat, and a weapon without one is shown flat-on. Anything long and thin is turned to run corner to corner, so it fills its square instead of standing in it as a sliver. Blood overlays, scabbards, glow cards and attachment markers are left out of the picture. `build_catalog.py` stamps each picture's contents into `items.json`, and the app puts that stamp in the picture's address, so a picture that is drawn again replaces the copy a phone has kept. A handful of items have no model in the game files at all and keep the category mark instead.
 
 ## Credits
 

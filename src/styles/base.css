@@ -21,6 +21,8 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+/* The home-screen app: sized from the screen, not from the page (see index.html). */
+html.is-app, html.is-app body { height: var(--page, 100vh); }
 html { background: var(--ink); -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--ink); color: var(--bone);
@@ -34,7 +36,7 @@ img { max-width: 100%; }
 :focus-visible { outline: 2px solid var(--ember-hot); outline-offset: 3px; }
 
 /* ── scene ── */
-.scene { position: fixed; inset: 0; overflow: hidden; background: #000; z-index: 0; }
+.scene { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); overflow: hidden; background: #000; z-index: 0; }
 .scene__bg { position: absolute; left: 0; top: 0; max-width: none; user-select: none; will-change: transform; }
 /* the full picture and the fire arrive together, once the picture is whole */
 .scene__bg--sharp, .scene__fireset { opacity: 0; transition: opacity 0.7s ease; }
@@ -66,13 +68,14 @@ img { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { .scene__smoke i { animation: none; } }
 
 /* ── main menu ── */
-/* The menu is pinned to the edges of the screen and never scrolls. Everything in it is
-   sized from the menu's own box (--mh and --mw are 1% of its height and width), not from
-   the browser's idea of the screen, which on phones changes as its bars slide in and out.
-   Nothing can then sit off-screen waiting for a swipe to bring it back. */
-.menu { position: fixed; inset: 0; z-index: 1; overflow: hidden; display: flex; --mh: 1vh; --mw: 1vw; }
-@supports (height: 1dvh) { .menu { --mh: 1dvh; --mw: 1dvw; } }
-@supports (container-type: size) { .menu { container-type: size; --mh: 1cqh; --mw: 1cqw; } }
+/* The menu is pinned to the screen and never scrolls. It is as tall as --full: the visible page
+   in a browser, the whole screen in the home-screen app (see index.html). Everything in it is
+   sized from the menu's own box (--mh and --mw are 1% of its height and width), not from the
+   browser's idea of the screen, which on phones changes as its bars slide in and out.
+   Nothing can then sit off-screen, or stop short of the screen's edge, waiting for a swipe. */
+.menu { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 1; overflow: hidden; display: flex; --mh: 1vh; --mw: 1vw; }
+@supports (height: 1dvh) { .menu { --mh: 1dvh; --mw: 1dvw; } html.is-app .menu { --mh: 1vh; --mw: 1vw; } }
+@supports (container-type: size) { .menu, html.is-app .menu { container-type: size; --mh: 1cqh; --mw: 1cqw; } }
 .banner { display: block; width: 100%; aspect-ratio: 1; filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); }
 canvas.banner { opacity: 0; transition: opacity 0.9s ease; }
 canvas.banner.is-ready { opacity: 1; }
@@ -142,7 +145,7 @@ canvas.banner.is-ready { opacity: 1; }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
 /* ── inner pages ── */
-.page { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
+.page { position: relative; z-index: 1; min-height: var(--page, 100dvh); display: flex; flex-direction: column; }
 .page__head { padding: calc(var(--safe-t) + clamp(14px, 3vh, 30px)) var(--pad) 0; text-align: center; }
 .page__title {
   display: flex; align-items: center; gap: clamp(10px, 3vw, 26px); font: 300 clamp(24px, 5.2vw, 42px)/1.1 var(--ui);
@@ -207,7 +210,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .panel__title { font: 400 19px/1.2 var(--ui); letter-spacing: 0.12em; text-transform: uppercase; color: #fff; }
 .panel__body { padding: 14px 16px; }
 
-.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 14px; background: rgba(0, 0, 0, 0.74); overflow-y: auto; animation: fade 0.16s ease; }
+.modal { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 50; display: grid; place-items: center; padding: 14px; background: rgba(0, 0, 0, 0.74); overflow-y: auto; animation: fade 0.16s ease; }
 .modal__box { width: min(560px, 100%); border: 1px solid var(--line); background: rgba(6, 5, 4, 0.96); box-shadow: 0 30px 80px #000; margin: auto; }
 .modal__box--wide { width: min(760px, 100%); }
 .modal__head { padding: 16px 20px 12px; text-align: center; font: 300 24px/1.15 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: #fff; border-bottom: 1px solid var(--line-2); }
@@ -224,7 +227,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .tenet p { margin-bottom: 0.7em; text-wrap: pretty; }
 .oath { max-width: 660px; margin: clamp(10px, 5vh, 60px) auto 0; text-align: center; }
 .oath p { font: italic 400 clamp(21px, 3vw, 27px)/1.62 var(--book); color: #f5ecd9; text-shadow: 0 1px 8px #000; text-wrap: pretty; }
-.oath__name { font-style: normal; color: var(--ember-hot); border-bottom: 1px solid color-mix(in srgb, var(--ember-hot) 60%, transparent); padding: 0 0.15em; }
+.oath__name { font-style: normal; color: var(--ember-hot); padding: 0 0.15em; }
 .oath__seal { width: 86px; height: 86px; margin: 28px auto 0; border-radius: 50%; object-fit: cover; opacity: 0.9; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(224, 82, 44, 0.35); }
 ::placeholder { color: var(--bone-3); font-style: italic; opacity: 1; }
 .lbar__search::placeholder { font-style: normal; }

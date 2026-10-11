@@ -1,7 +1,7 @@
 // The ledger card with an item picture, desktop and phone: node tests/look_ledger.mjs
 import { boot } from './harness.mjs';
 const t = await boot();
-for (const [name, opts, items] of [['desktop', { viewport: { width: 1500, height: 860 } }, ['Steel Armor', 'Daedric Warhammer', 'Grand Soul Gem']], ['phone', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, ['Elven Boots']]]) {
+for (const [name, opts, items] of [['desktop', { viewport: { width: 1500, height: 860 } }, ['Steel Armor', 'Daedric Nodachi', 'Dark Greatsword', 'Moon Monk\'s Robes - Assassin']], ['phone', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, ['Daedric Nodachi', 'Linen Cape (Black)']]]) {
   const page = await t.open(opts); await t.signIn(page, 'nick');
   await page.goto(t.base + '#/ledger'); await page.waitForSelector('.lrow');
   for (const item of items) {

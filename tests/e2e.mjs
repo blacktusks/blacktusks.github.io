@@ -48,6 +48,7 @@ await go(nick, '/oath'); ok((await nick.textContent('.oath')).includes('I Nick g
 
 console.log('members');
 await go(nick, '/members', 1000);
+await nick.waitForSelector('.roster__row', { timeout: 15000 }).catch(() => undefined); await nick.waitForTimeout(400);   // a cold start can take a moment
 ok((await nick.locator('.roster__row').count()) === 6, 'all six members listed');
 await nick.getByRole('button', { name: 'Add member' }).click();
 await nick.getByLabel('Sign-in name').fill('Durak'); await nick.getByLabel('Display name').fill('Durak Iron-Jaw');

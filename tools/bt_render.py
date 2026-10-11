@@ -147,7 +147,7 @@ def add_light(name, kind, energy, cam_dir, rot, center, dist, color=(1, 1, 1), s
 
 # Parts of a model that are not the item itself: blood that shows after a hit, the
 # scabbard, glow cards, heat haze. In the game they are drawn only at certain moments.
-EFFECT_NAMES = ("blood", "glowaddmesh", "heatrefraction", "g_glow", "g_wisps", "wisps", "editormarker", "bhk", "collision")
+EFFECT_NAMES = ("glowaddmesh", "heatrefraction", "g_glow", "g_wisps", "wisps", "editormarker", "bhk", "collision")
 def shader_names(o):
     out = []
     for slot in o.material_slots:
@@ -157,11 +157,85 @@ def shader_names(o):
     return out
 
 
-def is_effect(o):
+def colour_maps(o):
+    """Files of the colour textures on a part, lower case."""
+    out = []
+    for slot in o.material_slots:
+        m = slot.material
+        if not m or not m.node_tree: continue
+        for n in m.node_tree.nodes:
+            if n.type == "TEX_IMAGE" and n.image and "diffuse" in (n.label or n.name).lower():
+                out.append((n.image.filepath or "").replace("/", "\\").lower())
+    return out
+
+
+def part_kind(o):
+    """'item' for a part of the item itself; otherwise what kind of extra it is."""
     n = o.name.lower().split(".")[0]
-    if n in ("scb", "scbleft") or n.endswith("glow") or any(k in n for k in EFFECT_NAMES): return True
-    # glow cards and energy sheets use the game's effect shader; drawn plainly they come out as white slabs
-    return any(name.startswith("SkyrimShader:Effect") for name in shader_names(o))
+    shaders = shader_names(o)
+    # Attachment markers and stand-in boxes carry no game material at all; drawn, they are plain white slabs.
+    if not any(s.startswith("SkyrimShader") for s in shaders): return "marker"
+    if n.split(":")[0] in ("scb", "scbleft"): return "scabbard"
+    maps = colour_maps(o)
+    # The blood that shows on a blade after a hit is a second copy of the blade wearing a blood texture.
+    # It is told by that texture, not by its name: some swords are themselves called "blood...".
+    if any("\\textures\\blood\\" in t for t in maps): return "blood"
+    # Glow cards and energy sheets use the game's effect shader; drawn plainly they come out as white slabs.
+    # A ghost weapon is made of nothing else, and render_one() draws those whole.
+    if any(s.startswith("SkyrimShader:Effect") for s in shaders): return "ghost"
+    # (Not told by a texture kept under textures\\effects: bees, dartwings and honeycomb keep their real skins there.)
+    if n.endswith("glow") or any(k in n for k in EFFECT_NAMES): return "effect"
+    return "item"
+
+
+def untextured(objs):
+    """Parts that should carry a colour texture and do not: the sign of an import that went wrong."""
+    return sorted(o.name for o in objs if not any(t and os.path.exists(bpy.path.abspath(t)) for t in colour_maps(o)))
+
+
+def make_spectral(objs):
+    """Ghost weapons are drawn by the game as a glowing sheet. For a still, give them a solid pale body with the same relief."""
+    for o in objs:
+        for slot in o.material_slots:
+            relief = None
+            old = slot.material
+            if old and old.node_tree:
+                for n in old.node_tree.nodes:
+                    if n.type == "TEX_IMAGE" and n.image and (n.image.filepath or "").lower().endswith("_n.dds"): relief = n.image
+            m = bpy.data.materials.new("bt_spectral"); m.use_nodes = True
+            nt = m.node_tree; shader = nt.nodes.get("Principled BSDF")
+            if shader is None: continue
+            def put(name, value):
+                if name in shader.inputs: shader.inputs[name].default_value = value
+            put("Base Color", (0.13, 0.36, 0.40, 1.0)); put("Roughness", 0.36); put("Metallic", 0.35)
+            put("Emission Color", (0.08, 0.42, 0.48, 1.0)); put("Emission", (0.08, 0.42, 0.48, 1.0)); put("Emission Strength", 0.16)
+            if relief is not None:
+                try:
+                    tex = nt.nodes.new("ShaderNodeTexImage"); tex.image = relief; tex.image.colorspace_settings.name = "Non-Color"
+                    bump = nt.nodes.new("ShaderNodeNormalMap"); bump.inputs["Strength"].default_value = 1.4
+                    nt.links.new(tex.outputs["Color"], bump.inputs["Color"]); nt.links.new(bump.outputs["Normal"], shader.inputs["Normal"])
+                except Exception: pass
+            slot.material = m
+
+
+def to_diagonal(rot, pts):
+    """A long thin item standing straight up (or lying flat) is a sliver in a square picture.
+    Turn the camera so it runs corner to corner, tip to the upper left, as the game shows its own swords."""
+    inv = rot.transposed()
+    xy = [(q.x, q.y) for q in (inv @ p for p in pts)]
+    box_w = max(x for x, _ in xy) - min(x for x, _ in xy); box_h = max(y for _, y in xy) - min(y for _, y in xy)
+    if min(box_w, box_h) >= 0.40 * max(box_w, box_h): return rot, False     # already fills its square well enough
+    n = len(xy); mx = sum(x for x, _ in xy) / n; my = sum(y for _, y in xy) / n
+    sxx = sum((x - mx) ** 2 for x, _ in xy); syy = sum((y - my) ** 2 for _, y in xy); sxy = sum((x - mx) * (y - my) for x, y in xy)
+    theta = 0.5 * math.atan2(2 * sxy, sxx - syy)                  # the long axis, measured from the picture's x axis
+    c, s_ = math.cos(theta), math.sin(theta)
+    along = [(x - mx) * c + (y - my) * s_ for x, y in xy]; across = [-(x - mx) * s_ + (y - my) * c for x, y in xy]
+    length = max(along) - min(along); width = max(across) - min(across)
+    if length <= 1e-6 or width / length >= 0.34: return rot, False
+    roll = (theta % math.pi) - 3 * math.pi / 4                      # bring the long axis to 135 degrees
+    if roll <= -math.pi / 2: roll += math.pi                       # by the shorter turn, so the top end stays on top
+    if abs(roll) < math.radians(4): return rot, False
+    return rot @ Euler((0, 0, roll), "XYZ").to_matrix(), True
 
 
 def tame_glow():
@@ -227,28 +301,55 @@ def render_one(job, sc):
     info = {"key": job["key"], "name": job.get("name")}
     if not os.path.exists(path):
         info["skip"] = "no model file"; return info
-    wipe()
-    setup_scene()
-    try:
-        bpy.ops.import_scene.pynifly(filepath=path, import_collisions=False, import_animations=False, import_tris=False, import_shapekeys=False)
-    except Exception as e:
-        info["skip"] = "import failed: " + repr(e)[:160]; return info
-    sc.render.resolution_x = SIZE; sc.render.resolution_y = SIZE      # the importer changes these for inventory markers
-    meshes = [o for o in bpy.data.objects if o.type == "MESH" and len(o.data.vertices) > 0]
-    objs = [o for o in meshes if not is_effect(o)] or meshes
+    # Now and then an import comes in without some of its textures (always the first one after
+    # Blender starts, which main() gets out of the way, and rarely a later one). So the import is
+    # checked, and done once more if a part of the item has no colour texture.
+    for attempt in (1, 2):
+        wipe()
+        setup_scene()
+        try:
+            bpy.ops.import_scene.pynifly(filepath=path, import_collisions=False, import_animations=False, import_tris=False, import_shapekeys=False)
+        except Exception as e:
+            info["skip"] = "import failed: " + repr(e)[:160]; return info
+        sc.render.resolution_x = SIZE; sc.render.resolution_y = SIZE      # the importer changes these for inventory markers
+        meshes = [o for o in bpy.data.objects if o.type == "MESH" and len(o.data.vertices) > 0]
+        kinds = {o.name: part_kind(o) for o in meshes}
+        objs = [o for o in meshes if kinds[o.name] == "item"]
+        spectral = False
+        if not objs:                                                      # nothing solid: a ghost weapon, drawn whole
+            objs = [o for o in meshes if kinds[o.name] == "ghost"]; spectral = bool(objs) and job.get("cat") == "weapons"
+        if not objs: objs = meshes
+        if not objs:
+            info["skip"] = "no geometry"; return info
+        info["swapped"] = apply_swaps(job, objs)
+        bare = [] if spectral else untextured(objs)
+        loose = sorted(n for n, k in kinds.items() if k == "marker")
+        if attempt == 1 and (bare or loose):
+            info["first try"] = {"bare": bare, "markers": loose}
+            continue
+        break
+    if bare: info["bare"] = bare
     for o in bpy.data.objects:
         if o.type != "CAMERA" and o not in objs: o.hide_render = True
-    if not objs:
-        info["skip"] = "no geometry"; return info
+    if spectral: make_spectral(objs); info["spectral"] = True
     info["meshes"] = len(objs)
-    info["swapped"] = apply_swaps(job, objs)
+    info["left out"] = sorted(set(k for n, k in kinds.items() if k != "item" and not (spectral and k == "ghost")))
     info["dimmed"] = tame_glow()
     info["images"] = sum(1 for i in bpy.data.images if i.filepath)
     pts = mesh_points(objs)
     if len(pts) < 3:
         info["skip"] = "no points"; return info
     rot, how = view_rotation(objs)
+    if rot is not None:
+        # A few models carry a marker that looks down the length of the item, so all it shows is the
+        # item's end. Told by the item being far deeper than it is wide or tall; our own view is used instead.
+        seen = [rot.transposed() @ p for p in pts]
+        wide, tall, deep = (max(getattr(p, a) for p in seen) - min(getattr(p, a) for p in seen) for a in "xyz")
+        if deep > 2.2 * max(wide, tall):
+            rot = None; info["marker"] = "looks down the item, not used"
     if rot is None: rot, how = fallback_rotation(pts, job)
+    rot, turned = to_diagonal(rot, pts)
+    if turned: how += ", corner to corner"
     info["view"] = how
     inv = rot.transposed()
     cs = [inv @ p for p in pts]
@@ -276,7 +377,7 @@ def render_one(job, sc):
     info["ok"] = os.path.exists(out)
     info["span"] = [round(span.x, 2), round(span.y, 2), round(span.z, 2)]
     if DEBUG:
-        info["objects"] = [[o.name, len(o.data.vertices), shader_names(o), o in objs] for o in meshes]
+        info["objects"] = [[o.name, len(o.data.vertices), shader_names(o), kinds.get(o.name), o in objs] for o in meshes]
         nodes = []
         for mat in bpy.data.materials:
             if mat.node_tree:
@@ -298,6 +399,13 @@ def main():
         op = bpy.ops.import_scene.pynifly.get_rna_type()
         log("import options:", [(p.identifier, getattr(p, "default", None)) for p in op.properties if p.identifier != "rna_type"])
     sc = setup_scene()
+    # The first import after Blender starts can come in without its textures. Spend it on a model whose picture is not kept.
+    for j in todo[:1]:
+        path = os.path.join(STAGE, norm(j["model"], "meshes"))
+        if os.path.exists(path):
+            try: bpy.ops.import_scene.pynifly(filepath=path, import_collisions=False, import_animations=False, import_tris=False, import_shapekeys=False)
+            except Exception as e: log("warm-up import failed", repr(e)[:120])
+            wipe(); sc = setup_scene()
     done = 0
     for j in todo:
         if LIMIT and done >= LIMIT: break

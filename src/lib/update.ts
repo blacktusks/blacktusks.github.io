@@ -14,6 +14,9 @@ const busy = () => !!document.querySelector('.modal, .sheet')
 
 export function watchForUpdates() {
   if (import.meta.env.DEV || !('serviceWorker' in navigator)) return;
+  // Item pictures used to be kept under their bare names. They now carry a stamp of their
+  // contents, so the old store is only dead weight (and old drawings): clear it out.
+  try { void window.caches?.delete('item-pictures').catch(() => undefined); } catch { /* no cache storage here */ }
   let controlled = !!navigator.serviceWorker.controller, reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!controlled) { controlled = true; return; }      // the very first install: there is no older build on screen

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn the raw game dump (tools/extract_game_data.py) into the app's item
 catalog and map places.  Usage: build_catalog.py <raw_dir> <public/data dir> [probe_items.json]"""
-import json, re, sys, os, collections
+import json, re, sys, os, collections, hashlib
 
 RAW, OUT = sys.argv[1], sys.argv[2]
 # Optional: the model dump from tools/bt_probe.py. With it, each item is tied to
@@ -215,7 +215,7 @@ for i in pool:
 name_of = lambda g: (by_gid.get(g) or {}).get("name") or ""
 
 # ---------------------------------------------------------------- recipes
-make = collections.defaultdict(list); temper = {}; uses = collections.defaultdict(list); breaks = collections.defaultdict(list)
+make = collections.defaultdict(list); uses = collections.defaultdict(list); breaks = collections.defaultdict(list)
 for r in recipes:
     out = r.get("out"); bench = r.get("bench") or ""
     if not out or out not in by_gid or not r["ing"] or not bench: continue   # no bench = switched off on the server
@@ -224,10 +224,7 @@ for r in recipes:
     if len(ing) != len(r["ing"]): continue
     blocked, req = requirement(r)
     okey = alias.get(out, out)
-    if bench in TEMPER:
-        if okey not in temper or r["win"].startswith("RP_"):
-            temper[okey] = {"b": TEMPER[bench], "i": [[name_of(g), q] for g, q in ing]}
-        continue
+    if bench in TEMPER: continue        # grindstone and workbench: the realm has no weapon or armor improvement yet
     out_rec = by_gid[out]["rec"]
     breakdown = out_rec in ("MISC", "INGR") and len(ing) == 1 and by_gid[ing[0][0]]["rec"] in ("ARMO", "WEAP")
     if breakdown:
@@ -282,7 +279,6 @@ for gid, i in kept.items():
             seen.add(k); uniq.append({k2: v for k2, v in e.items() if k2 != "_rank"})
         d["mk"] = uniq[:4]
         if len(uniq) > 4: d["mkn"] = len(uniq)
-    if gid in temper: d["tp"] = temper[gid]
     if gid in breaks: d["bd"] = breaks[gid][:3]
     u = list(dict.fromkeys(uses.get(gid, [])))
     if u:
@@ -301,10 +297,13 @@ def dump(name, obj):
 # section: clutter, dragon claws, untyped "Misc" items, and every tool but the
 # lockpick and the linen wrap. "Do Not Delete" is a hidden quest helper from
 # Skyrim itself (it carries the value of Barenziah's crown) and was never an item.
+# Also left out: the generic enchanted variants of ordinary gear ("Iron Sword of
+# Embers" and the like). Named enchanted items such as artifacts stay.
 KEEP_BOOKS = {"The Code of Malacath"}
 KEEP_TOOLS = {"Lockpick", "Linen Wrap"}
 DROP_MISC_TYPES = {"Clutter", "Dragon Claw", "Misc"}
 def unwanted(r):
+    if r[9] & 1: return True
     if r[2] == "keys": return True
     if r[2] == "books": return r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS
     if r[2] == "misc":
@@ -315,6 +314,8 @@ out_items = [r for r in out_items if not unwanted(r)]
 for k in dropped: details.pop(k, None)
 out_items.sort(key=lambda r: (r[2], r[1].lower()))
 # Pictures: the last column points into "pics", or is -1 where there is none.
+# "picv" holds a short stamp of each picture's contents. The app puts it in the picture's
+# address, so a picture that is drawn again is fetched again instead of coming from a phone's cache.
 pics = []; pic_idx = {}
 have = set()
 pic_dir = os.path.join(os.path.dirname(os.path.abspath(OUT)), "items")
@@ -326,7 +327,9 @@ for r in out_items:
     if key is None: r.append(-1); continue
     if key not in pic_idx: pic_idx[key] = len(pics); pics.append(key)
     r.append(pic_idx[key])
-dump("items.json", {"v": 2, "sources": src_list, "pics": pics,
+def stamp(key):
+    with open(os.path.join(pic_dir, key + ".webp"), "rb") as f: return hashlib.sha1(f.read()).hexdigest()[:6]
+dump("items.json", {"v": 2, "sources": src_list, "pics": pics, "picv": [stamp(k) for k in pics],
                     "cols": ["key", "name", "cat", "type", "cls", "value", "weight", "stat", "src", "flags", "pic"], "items": out_items})
 print("pictures:", len(pics), "for", sum(1 for r in out_items if r[10] >= 0), "items;", sum(1 for r in out_items if r[10] < 0), "items without one")
 dump("details.json", details)
@@ -353,4 +356,4 @@ places.sort(key=lambda p: p[0])
 dump("places.json", {"cols": ["name", "type", "x", "y", "server"], "places": places})
 print("items", len(out_items), "of", len(pool), "playable;", "details", len(details), "; places", len(places))
 print(collections.Counter(r[2] for r in out_items))
-print("generic enchanted variants:", sum(1 for r in out_items if r[9] & 1))
+print("left out:", len(dropped))

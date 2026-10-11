@@ -16,12 +16,47 @@
     <link rel="preload" as="image" href="./img/largashbur.webp" fetchpriority="high" />
     <link rel="preload" as="image" href="./img/banner.webp" />
     <title>Black Tusk Companion</title>
+    <!-- Opened from the home screen, the app has the whole screen to itself. iPhones and iPads
+         can start such an app with a page that is shorter than the screen by the height of the
+         status bar, which leaves an empty band along the bottom (WebKit bug 254868). So the styles
+         are told when this is the home-screen app ("is-app"), and there every full-screen layer is
+         sized from the screen itself (--full) instead of from the page. This runs before anything
+         is drawn, so nothing jumps. -->
+    <style>
+      :root { --full: 100%; --page: 100dvh; }
+      html.is-app { --full: max(100%, 100vh, var(--screen-h, 0px)); --page: max(100vh, var(--screen-h, 0px)); }
+    </style>
+    <script>
+      (function () {
+        var root = document.documentElement, nav = window.navigator;
+        var mq = window.matchMedia ? window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)') : null;
+        function fit() {
+          var app = nav.standalone === true || !!(mq && mq.matches);
+          root.classList.toggle('is-app', app);
+          var px = 0;
+          if (app && nav.standalone === true && window.screen && /iPhone|iPod/.test(nav.userAgent)) {
+            // An iPhone home-screen app always has the whole screen (an iPad's can sit in a window, so
+            // iPads are left to the styles alone). The screen's own size is the truth: screen.width and
+            // screen.height do not turn with the phone, so pick the one that runs down the page now.
+            var short = Math.min(screen.width, screen.height), long = Math.max(screen.width, screen.height);
+            var w = window.innerWidth, h = window.innerHeight;
+            var full = Math.abs(w - short) <= 1 ? long : Math.abs(w - long) <= 1 ? short : 0;   // 0: a window that does not span the screen
+            if (full && h <= full + 1 && full - h <= 110) px = full;
+          }
+          if (px) root.style.setProperty('--screen-h', px + 'px'); else root.style.removeProperty('--screen-h');
+        }
+        fit();
+        ['resize', 'orientationchange', 'pageshow'].forEach(function (e) { window.addEventListener(e, fit); });
+        document.addEventListener('visibilitychange', fit);
+        if (mq && mq.addEventListener) mq.addEventListener('change', fit);
+      })();
+    </script>
   </head>
   <body>
     <!-- The loading screen. It is plain HTML so it shows before any script has arrived,
          and src/lib/splash.ts takes it away once the screen behind it is whole. -->
     <style>
-      #splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh;
+      #splash { position: fixed; top: 0; left: 0; right: 0; height: var(--full); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh;
         padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom); background: #000 radial-gradient(90% 70% at 50% 42%, #3a0d08 0%, #170504 48%, #000 100%);
         color: #ece3cf; text-align: center; transition: opacity 0.45s ease; }
       #splash.is-done { opacity: 0; pointer-events: none; }
