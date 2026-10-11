@@ -179,6 +179,9 @@ export default function Ledger() {
   const [editing, setEditing] = useState(false); const [adding, setAdding] = useState(false); const [error, setError] = useState('');
   const [scroll, setScroll] = useState(0); const [viewH, setViewH] = useState(600); const [cardOpen, setCardOpen] = useState(!!params.get('item'));
   const listRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null); const swipeRef = useRef<HTMLDivElement>(null);
+  const touch = useRef<{ x: number; y: number; t: number; dx: number; live: boolean } | null>(null);
+  const [slide, setSlide] = useState<'next' | 'prev' | ''>('');
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await supabase.from('ledger_entries').select('*');
@@ -243,7 +246,47 @@ export default function Ledger() {
     if (at >= 0) { listRef.current?.scrollTo(0, Math.max(0, at * ROW - 120)); jumped.current = true; setParams({}, { replace: true }); }
   }, [rows, picked, params, setParams]);
 
+  // Back at the list (on a phone the card covers it): bring the item last looked at into view.
+  useEffect(() => {
+    if (cardOpen || !picked) return;
+    const el = listRef.current; const i = rows.findIndex((r) => r.key === picked);
+    if (!el || i < 0) return;
+    const top = i * ROW; if (top < el.scrollTop || top + ROW > el.scrollTop + el.clientHeight) el.scrollTop = Math.max(0, top - el.clientHeight / 2 + ROW);
+  }, [cardOpen]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const current = picked ? byKey.get(picked) : undefined;
+  // Stepping through the list from the open card: a swipe on a phone, or the arrows above the picture.
+  const at = current ? rows.findIndex((r) => r.key === current.key) : -1;
+  const step = (d: 1 | -1) => {
+    const n = at + d;
+    if (at < 0 || n < 0 || n >= rows.length) return false;
+    setSlide(d > 0 ? 'next' : 'prev'); setPicked(rows[n].key); cardRef.current?.scrollTo(0, 0);
+    return true;
+  };
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) { touch.current = null; return; }
+    touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.timeStamp, dx: 0, live: false };
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const s = touch.current; if (!s) return;
+    const dx = e.touches[0].clientX - s.x, dy = e.touches[0].clientY - s.y;
+    if (!s.live) {                                   // wait until the finger has plainly gone sideways; up and down is the card scrolling
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.3) { if (Math.abs(dy) > 14) touch.current = null; return; }
+      s.live = true;
+    }
+    s.dx = dx;
+    const el = swipeRef.current; if (!el) return;
+    const end = (dx < 0 && at >= rows.length - 1) || (dx > 0 && at <= 0);     // nothing further that way: the card only gives a little
+    el.style.transition = 'none'; el.style.transform = `translate3d(${end ? dx * 0.22 : dx}px, 0, 0)`; el.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 420));
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s = touch.current; touch.current = null;
+    if (!s || !s.live) return;
+    const far = Math.abs(s.dx) > Math.min(110, window.innerWidth * 0.22), quick = Math.abs(s.dx) > 30 && Math.abs(s.dx) / Math.max(1, e.timeStamp - s.t) > 0.45;
+    const moved = (far || quick) && step(s.dx < 0 ? 1 : -1);
+    const el = swipeRef.current; if (!el) return;
+    el.style.transition = moved ? 'none' : 'transform 0.2s ease, opacity 0.2s ease'; el.style.transform = ''; el.style.opacity = '';
+  };
   const cur = current ? entry.get(current.key) : undefined;
   const det = current ? details?.[current.key] : undefined;
   const acq = current ? autoAcquire(current, det) : null;
@@ -296,7 +339,7 @@ export default function Ledger() {
                 const e = entry.get(i.key);
                 return (
                   <button key={i.key} role="option" aria-selected={picked === i.key} className={`lrow ${picked === i.key ? 'is-on' : ''} ${e?.hidden ? 'is-hidden' : ''}`}
-                    style={{ top: (first + n) * ROW }} onClick={() => { setPicked(i.key); setCardOpen(true); }}>
+                    style={{ top: (first + n) * ROW }} onClick={() => { setSlide(''); setPicked(i.key); setCardOpen(true); }}>
                     <span className="lc-name"><span className="lrow__icon"><Glyph id={i.cat} size={17} /></span>{i.name}{favs.has(i.key) && <span className="lrow__fav" aria-label="Favorite">★</span>}</span>
                     <span className="lc-type">{i.type}{i.cls ? `, ${i.cls}` : ''}</span>
                     <span className="lc-num lc-stat">{i.stat ?? ''}</span><span className="lc-num lc-wgt">{i.weight || ''}</span><span className="lc-num lc-val">{num(i.value)}</span>
@@ -308,9 +351,17 @@ export default function Ledger() {
           </div>
         </section>
 
-        <section className="ledger__card" aria-label="Item">
+        <section className="ledger__card" aria-label="Item" ref={cardRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
           {!current ? <p className="empty">Pick an item to see its tier, price and how to get it.</p> : (
             <>
+              {at >= 0 && rows.length > 1 && (
+                <div className="icard__pager">
+                  <button className="is-prev" aria-label="Previous item" disabled={at <= 0} onClick={() => step(-1)} />
+                  <span>{num(at + 1)} of {num(rows.length)}</span>
+                  <button className="is-next" aria-label="Next item" disabled={at >= rows.length - 1} onClick={() => step(1)} />
+                </div>
+              )}
+              <div className={`icard__swipe ${slide ? `is-${slide}` : ''}`} key={current.key} ref={swipeRef}>
               <div className="icard__view">
                 <ItemPicture key={current.key} item={current} uploaded={cur?.image_path ?? null} />
               </div>
@@ -334,6 +385,7 @@ export default function Ledger() {
                   {herald && <button className="btn btn--small btn--go" onClick={() => setEditing(true)}>Edit</button>}
                   <button className="btn btn--small ledger__close" onClick={() => setCardOpen(false)}>Back to list</button>
                 </div>
+              </div>
               </div>
             </>
           )}

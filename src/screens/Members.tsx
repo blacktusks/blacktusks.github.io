@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useAuth } from '../lib/auth';
 import { api, supabase } from '../lib/supabase';
 import { TAGS, isForgemaster, isOfficer, sortTags, standing } from '../lib/roles';
@@ -11,20 +11,22 @@ import { cleanWeek, deviceZone, hoursFree } from '../lib/availability';
 import { ChangePassword } from './Account';
 
 interface Presence { configured: boolean; ok?: boolean; reason?: string; server?: string; members: { name: string; status: string; game: string | null }[] }
-type Status = 'realm' | 'discord' | 'offline' | 'unlinked' | 'unknown';
+type Status = 'realm' | 'discord' | 'offline' | 'unknown';
 const STATUS: Record<Status, [string, string]> = {
   realm: ['In the realm', 'Discord shows them playing Skyrim right now.'],
   discord: ['In Discord', 'Online in Discord, not in the game.'],
   offline: ['Offline', 'Not online in Discord.'],
-  unlinked: ['Not linked', 'No Discord name on their profile yet.'],
   unknown: ['', ''],
 };
 const norm = (s: string) => s.trim().toLowerCase().replace(/#\d{1,4}$/, '');
 
+/** The name looked for in Discord's list: the Discord name on the profile, or the member's own name when that is blank.
+ *  Discord's widget reports each member by their nickname in the clan server (their own Discord name if they have no nickname). */
+const discordKey = (p: Profile) => norm(p.discord_name || p.display_name);
+
 function statusOf(p: Profile, presence: Presence | null): { status: Status; game?: string } {
   if (!presence?.configured || presence.ok === false) return { status: 'unknown' };
-  if (!p.discord_name) return { status: 'unlinked' };
-  const hit = presence.members.find((m) => norm(m.name) === norm(p.discord_name!));
+  const hit = presence.members.find((m) => norm(m.name) === discordKey(p));
   if (!hit) return { status: 'offline' };
   if (hit.game && /skyrim|daedric online/i.test(hit.game)) return { status: 'realm', game: hit.game };
   return { status: 'discord', game: hit.game ?? undefined };
@@ -134,7 +136,7 @@ function AddMember({ mine, onClose, onAdded }: { mine: string[]; onClose: () => 
         </label>
         <label className="field"><span>Discord name</span>
           <input type="text" value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={64} placeholder="Optional" />
-          <small>As it shows in the clan Discord's member list. Used for online status.</small>
+          <small>Their nickname as it shows in the clan Discord's member list, not their username or Name#0000. Leave it blank if it is the same as their name here. Used for online status.</small>
         </label>
         <span className="label">Tags</span>
         <TagPicker value={tags} onChange={setTags} mine={mine} />
@@ -233,7 +235,7 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
         </label>
         <label className="field"><span>Discord name</span>
           <input type="text" value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={64} />
-          <small>As it shows in the clan Discord's member list. This is how the Members screen knows who is online.</small>
+          <small>The nickname as it shows in the clan Discord's member list, not the username or Name#0000. Leave it blank if it is the same as the name above. This is how the Members screen knows who is online.</small>
         </label>
         {self && (
           <label className="field"><span>Bio</span>
@@ -282,9 +284,13 @@ function MemberCard({ member, me, presence, onClose, onChanged }: {
   );
 }
 
-function DiscordSetup({ presence, onClose, onSaved }: { presence: Presence | null; onClose: () => void; onSaved: () => void }) {
+function DiscordSetup({ presence, members, onClose, onSaved }: { presence: Presence | null; members: Profile[]; onClose: () => void; onSaved: () => void }) {
+  const known = new Set(members.map(discordKey));
+  const strangers = presence?.ok ? presence.members.filter((m) => !known.has(norm(m.name))).map((m) => m.name) : [];
   const [id, setId] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false);
-  useEffect(() => { supabase.from('app_settings').select('value').eq('key', 'discord_guild_id').maybeSingle().then(({ data }) => setId(String(data?.value ?? ''))); }, []);
+  // The saved ID arrives a moment after the pop-up opens; it must not wipe out one that is already being typed.
+  const typed = useRef(false);
+  useEffect(() => { supabase.from('app_settings').select('value').eq('key', 'discord_guild_id').maybeSingle().then(({ data }) => { if (!typed.current) setId(String(data?.value ?? '')); }); }, []);
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setBusy(true);
     const clean = id.replace(/\D/g, '');
@@ -299,19 +305,20 @@ function DiscordSetup({ presence, onClose, onSaved }: { presence: Presence | nul
     <Modal title="Discord link" onClose={onClose}>
       <form onSubmit={save}>
         <ol className="steps">
-          <li>In the clan Discord, open <strong>Server Settings</strong>, then <strong>Widget</strong>, and turn on <strong>Enable Server Widget</strong>.</li>
+          <li>In the clan Discord, open <strong>Server Settings</strong>, then <strong>Engagement</strong>, and under Server Widget turn on <strong>Enable Server Widget</strong>.</li>
           <li>Copy the <strong>Server ID</strong> shown on that same page and paste it here.</li>
-          <li>Put each member's Discord name on their profile. Members can do this themselves.</li>
+          <li>A member whose nickname in the clan Discord is the same as their name here needs nothing more. Anyone else puts that nickname on their profile as their Discord name. Members can do this themselves.</li>
         </ol>
         <label className="field"><span>Server ID</span>
-          <input type="text" inputMode="numeric" value={id} onChange={(e) => setId(e.target.value)} placeholder="18 or 19 digits" />
+          <input type="text" inputMode="numeric" value={id} onChange={(e) => { typed.current = true; setId(e.target.value); }} placeholder="18 or 19 digits" />
         </label>
         <p className="hint">A member shows as in the realm when Discord reports them playing Skyrim. Discord cannot tell Daedric Online from single-player Skyrim, and members who hide their game activity show as in Discord only.</p>
         {presence?.configured && presence.ok === false && <p className="error">{presence.reason}</p>}
         {presence?.ok && <p className="note">Connected to {presence.server}. {presence.members.length} online right now.</p>}
         {presence?.ok && presence.members.length > 0 && (
           <p className="hint">Names as Discord reports them right now: {presence.members.map((m) => m.name).join(', ')}.
-            The Discord name on a member's profile has to match one of these (capitals do not matter).
+            A member's name here, or the Discord name on their profile, has to match one of these (capitals do not matter).
+            {strangers.length > 0 ? ` Online in Discord but matching no member here: ${strangers.join(', ')}.` : ''}
             {presence.members.some((m) => m.game) ? '' : ' Nobody is showing a game at the moment, so nobody will read as in the realm.'}</p>
         )}
         {error && <p className="error" role="alert">{error}</p>}
@@ -376,7 +383,7 @@ export default function Members() {
       </p>}
       {current && <MemberCard key={current.id} member={current} me={me} presence={presence} onClose={() => setOpen(null)} onChanged={load} />}
       {adding && <AddMember mine={me.tags} onClose={() => setAdding(false)} onAdded={load} />}
-      {discord && <DiscordSetup presence={presence} onClose={() => setDiscord(false)} onSaved={loadPresence} />}
+      {discord && <DiscordSetup presence={presence} members={members ?? []} onClose={() => setDiscord(false)} onSaved={loadPresence} />}
     </Page>
   );
 }

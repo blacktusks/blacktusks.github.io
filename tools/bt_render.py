@@ -218,6 +218,30 @@ def make_spectral(objs):
             slot.material = m
 
 
+def drop_empty_maps(objs):
+    """A texture slot whose file is missing feeds the shader plain black. For a normal map that turns every
+    surface away from the light, and the part comes out as a flat pale shape. Such slots are unplugged, and a
+    missing normal map is replaced by "no relief at all"."""
+    dropped = 0
+    for o in objs:
+        for slot in o.material_slots:
+            m = slot.material
+            if not m or not m.node_tree: continue
+            for node in list(m.node_tree.nodes):
+                if node.type != "TEX_IMAGE": continue
+                label = (node.label or node.name).lower()
+                if "diffuse" in label: continue                      # a missing colour map is reported as "bare" instead
+                img = node.image
+                if img is not None and img.filepath and os.path.exists(bpy.path.abspath(img.filepath)): continue
+                if "normal" in label:
+                    for out in node.outputs:
+                        for link in list(out.links):
+                            try: link.to_socket.default_value = (0.5, 0.5, 1.0, 1.0)
+                            except Exception: pass
+                m.node_tree.nodes.remove(node); dropped += 1
+    return dropped
+
+
 def to_diagonal(rot, pts):
     """A long thin item standing straight up (or lying flat) is a sliver in a square picture.
     Turn the camera so it runs corner to corner, tip to the upper left, as the game shows its own swords."""
@@ -329,6 +353,8 @@ def render_one(job, sc):
             continue
         break
     if bare: info["bare"] = bare
+    empty = drop_empty_maps(objs)
+    if empty: info["maps missing"] = empty
     for o in bpy.data.objects:
         if o.type != "CAMERA" and o not in objs: o.hide_render = True
     if spectral: make_spectral(objs); info["spectral"] = True

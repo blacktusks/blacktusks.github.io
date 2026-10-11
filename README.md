@@ -13,14 +13,14 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | Screen | Who can change it |
 | --- | --- |
 | Code of Mauloch | Fixed text. Open to guests. |
-| Black Tusk Oath | Fixed text, with the member's own name in it. |
+| Black Tusk Oath | Fixed text, with the member's own name in it, bold and with a light passing over it. |
 | Notice Board: announcements | Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster, Daedric. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
 | Notice Board: change log | Forgemaster only. |
 | Members | Every member has a card they fill in themselves: a bio (500 characters), up to three masteries with a level from 0 to 5, and the hours of the week they are usually free, shown to each reader in their own time zone (the card says so). Every card opens as members see it; an Edit button, shown only to those allowed, opens the form. Officers (Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster) add, edit and remove members and their tags, and can set another member's masteries (not their bio or hours). Only the Forgemaster can view or set another member's password, hand out the Forgemaster tag, or change a sign-in name. Only the Chieftain or a Forgemaster can change the Chieftain's account. Members change their own display name, Discord name and password. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
 | Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
 | Mining Map | Any member pings an ore vein. Officers and Daedric approve or deny pings; their own markers go straight on the map. |
-| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. |
+| Pricing Ledger | Officers and Daedric set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. On a phone, an open item can be swiped left or right (or stepped with the arrows above its picture) to the next or previous item in the list. |
 
 Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag and keeps full access.
 
@@ -28,7 +28,7 @@ Tags work like Discord roles and a member can hold several. The developer tag is
 
 - **App**: React and Vite, published as static files to GitHub Pages. `vite-plugin-pwa` makes it installable and lets the app shell open offline.
 - **Backend**: a free Supabase project. Supabase Auth holds the accounts; Postgres row level security enforces every permission in the table above; one Edge Function (`clan-api`) handles account management and reads the clan Discord's Server Widget.
-- **Game data**: `public/data` (about 4,200 items, their recipes and 402 map places), `public/map` (the world map) and `public/items` (a picture of every item) are built from the game files of a Daedric Online install by the scripts in `tools/`.
+- **Game data**: `public/data` (about 4,100 items, their recipes and 402 map places), `public/map` (the world map) and `public/items` (a picture of every item) are built from the game files of a Daedric Online install by the scripts in `tools/`.
 - **Starting up**: a loading screen written into `index.html` covers the app until the fonts, the member's session and the first screen's pictures are all in (`src/lib/splash.ts`). The main menu, the map and the ledger are pinned to the screen and sized from their own box, so nothing sits off-screen on a phone. Opened from the home screen, an iPhone can start the app with a page that is shorter than the screen by the height of the status bar (WebKit bug 254868); a small script at the top of `index.html` spots the home-screen app and sizes every full-screen layer from the screen itself (`--full`), so no band is left along the bottom.
 
 ## Setting up the backend (once)
@@ -67,7 +67,7 @@ After that, every change to `main` is built and published by `.github/workflows/
 - **Add a member**: Members > Add member. The app shows a temporary password once; the member must choose their own at first sign-in.
 - **Forgotten password**: the Forgemaster opens the member in Members and uses Show current password or Set password. Every view is written to the audit log (`audit_log` table). Setting a password signs that member out on every device.
 - **Staying signed in**: with "Stay signed in" ticked on the sign-in screen, a device remembers the member until they sign out. Unticked, they are signed out when the app or tab is closed. Changing a password signs the member out everywhere else.
-- **Online status**: Members > Discord link (Forgemaster). Someone who can manage the clan Discord turns on Server Settings > Widget > Enable Server Widget and copies the Server ID from that page; the Forgemaster pastes it into the app. Each member's profile needs their Discord name exactly as the widget reports it (the Discord link panel lists the names it is currently reporting). "In the realm" means Discord shows them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim, and members who hide their activity only show as in Discord. Discord documents the names and online status in the widget but not the game being played, so that part could change without notice.
+- **Online status**: Members > Discord link (Forgemaster). Someone who can manage the clan Discord turns on Server Settings > Engagement > Server Widget > Enable Server Widget and copies the Server ID from that page; the Forgemaster pastes it into the app. Discord's widget names each online member by their **nickname in the clan server** (their own Discord name if they have none), not by username or Name#0000. A member whose nickname is the same as their name in the app is found with nothing more to do; anyone else puts that nickname on their profile as their Discord name. The Discord link pop-up lists who is online in Discord but matches no member. A member reads as in the realm when Discord reports them playing Skyrim; Discord cannot tell Daedric Online from single-player Skyrim, and members who hide their game activity read as in Discord only. Discord documents the names and online status in the widget but not the game being played, so that part could change without notice.
 - **New versions**: the app checks for a new build when it opens and when it comes back to the front, and switches to it by itself. If someone is in the middle of typing, a bar offers a Reload button instead.
 - **Install on a phone**: iPhone: open in Safari, Share, Add to Home Screen. Android: open in Chrome, menu, Install app.
 
@@ -112,7 +112,7 @@ python tools/build_tiles.py map_shaded.png map_geo.json public/map
 
 The extractors only read. Paths to the game folder are at the top of `extract_game_data.py`.
 
-Left out of the ledger at the clan's request (see `unwanted` in `build_catalog.py`): keys, every book except spell tomes and the Code of Malacath, from Misc the clutter, dragon claws, untyped "Misc" items and every tool but the lockpick and linen wrap, and the generic enchanted variants of ordinary gear ("Iron Sword of Embers"; named enchanted items stay). Grindstone and workbench recipes are left out too: the realm has no weapon or armor improvement.
+Left out of the ledger at the clan's request (see `unwanted` in `build_catalog.py`): keys, every book except spell tomes and the Code of Malacath, from Misc the clutter, dragon claws, untyped "Misc" items and every tool but the lockpick and linen wrap, and the generic enchanted variants of ordinary gear ("Iron Sword of Embers"; named enchanted items stay). Grindstone and workbench recipes are left out too: the realm has no weapon or armor improvement, and for the same reason the Blacksmith's potions are out. The dragon priest masks (Miraak's and the Wooden Mask included) are out as well; the armor sets named after the priests stay.
 
 ### Item pictures
 
@@ -132,7 +132,7 @@ python tools/pack_pictures.py <renders folder> public/items <jobs.json>      # 3
 python tools/build_catalog.py <raw folder> public/data <out>/probe_items.json # ties each item to its picture
 ```
 
-Items that share a model and textures share a picture, so about 4,200 items need about 2,650 pictures. A model with an inventory marker is shown from the angle the game's own inventory uses; one without is shown from the front, or from above if it lies flat, and a weapon without one is shown flat-on. Anything long and thin is turned to run corner to corner, so it fills its square instead of standing in it as a sliver. Blood overlays, scabbards, glow cards and attachment markers are left out of the picture. `build_catalog.py` stamps each picture's contents into `items.json`, and the app puts that stamp in the picture's address, so a picture that is drawn again replaces the copy a phone has kept. A handful of items have no model in the game files at all and keep the category mark instead.
+Items that share a model and textures share a picture, so about 4,100 items need about 2,650 pictures. A model with an inventory marker is shown from the angle the game's own inventory uses; one without is shown from the front, or from above if it lies flat, and a weapon without one is shown flat-on. Anything long and thin is turned to run corner to corner, so it fills its square instead of standing in it as a sliver. Blood overlays, scabbards, glow cards and attachment markers are left out of the picture, and a texture slot whose file is missing is unplugged (a missing normal map otherwise turns the part into a flat pale shape). `build_catalog.py` stamps each picture's contents into `items.json`, and the app puts that stamp in the picture's address, so a picture that is drawn again replaces the copy a phone has kept. A handful of items have no model in the game files at all and keep the category mark instead.
 
 ## Credits
 

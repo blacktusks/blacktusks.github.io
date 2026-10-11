@@ -17,7 +17,7 @@ function fit(w: number, h: number): Fit {
   return { scale, left, top, fx: left + FIRE_X * iw, fy: top + FIRE_Y * ih, portrait };
 }
 
-interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; seed: number; kind: 0 | 1 | 2 }
+interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; seed: number; kind: 0 | 1 | 2 | 3 }
 
 function sprite(stops: [number, string][]): HTMLCanvasElement {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -58,15 +58,19 @@ void main(){
 
 /**
  * The fire on the log pile: the shader flame, plus sparks, thin smoke and the
- * glow in the logs on a plain canvas. \`light\` is a separate element that warms
+ * glow in the logs on a plain canvas. A few slow embers also drift up across
+ * the whole scene: small, dim and never many, so they are felt more than seen. \`light\` is a separate element that warms
  * the ground with an overlay blend, which tints what is already there instead
  * of laying orange fog over it.
  */
-function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, f: Fit) {
+function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, emberRef: React.RefObject<HTMLCanvasElement>, f: Fit) {
   const fitRef = useRef(f); fitRef.current = f;
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
+    // The drifting embers have a sheet of their own, laid over the scene's shading, or the dark at
+    // the foot of a phone screen would swallow them. Without it they share the fire's sheet.
+    const emberCanvas = emberRef.current; const ectx = emberCanvas?.getContext('2d') ?? ctx;
     const still = reducedMotion();
     const hot = sprite([[0, 'rgba(255,238,196,0.9)'], [0.35, 'rgba(255,196,110,0.55)'], [1, 'rgba(255,150,60,0)']]);
     const mid = sprite([[0, 'rgba(255,170,74,0.8)'], [0.45, 'rgba(236,112,40,0.4)'], [1, 'rgba(200,70,20,0)']]);
@@ -74,7 +78,7 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
     const ember = sprite([[0, 'rgba(255,214,150,1)'], [0.5, 'rgba(255,130,50,0.6)'], [1, 'rgba(255,80,10,0)']]);
     const smoke = sprite([[0, 'rgba(120,108,106,0.5)'], [0.6, 'rgba(96,86,84,0.2)'], [1, 'rgba(80,70,68,0)']]);
     const parts: Spark[] = [];
-    let raf = 0, last = performance.now(), flick = 0.9, target = 0.9, sinceFlick = 0, owedSmoke = 0, owedSpark = 0;
+    let raf = 0, last = performance.now(), flick = 0.9, target = 0.9, sinceFlick = 0, owedSmoke = 0, owedSpark = 0, owedEmber = 0;
 
     // the shader flame; if WebGL is missing the plain-canvas fallback below stands in
     const fc = flameRef.current;
@@ -97,6 +101,10 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(canvas.clientWidth * dpr); canvas.height = Math.round(canvas.clientHeight * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (emberCanvas && ectx !== ctx) {
+        emberCanvas.width = Math.round(emberCanvas.clientWidth * dpr); emberCanvas.height = Math.round(emberCanvas.clientHeight * dpr);
+        ectx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
     };
     resize(); window.addEventListener('resize', resize);
     const rnd = Math.random;
@@ -106,6 +114,7 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
       const { fx, fy, scale: px } = fitRef.current;       // px: one picture pixel on screen
       const t = now / 1000;
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      if (emberCanvas && ectx !== ctx) { ectx.clearRect(0, 0, emberCanvas.clientWidth, emberCanvas.clientHeight); ectx.globalCompositeOperation = 'lighter'; }
 
       // an uneven flicker, shared by the flame and the light it throws
       sinceFlick += dt; if (sinceFlick > 0.07 + rnd() * 0.1) { sinceFlick = 0; target = 0.7 + rnd() * 0.3; }
@@ -133,6 +142,17 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
           owedSpark -= 1;
           parts.push({ x: fx + (rnd() - 0.5) * 22 * px, y: fy - (22 + rnd() * 40) * px, vx: (rnd() - 0.4) * 22 * px, vy: -(60 + rnd() * 70) * px,
             life: 0, max: 1.1 + rnd() * 1.7, size: (0.9 + rnd() * 0.7) * px, seed: rnd() * 6.283, kind: 1 });
+        }
+        // Drifting embers: three or four a second, each afloat for seven to thirteen seconds, so some
+        // thirty-five are in the air at once. Half leave the fire, half rise from the ground anywhere.
+        const W = canvas.clientWidth, H = canvas.clientHeight, u = Math.max(1, Math.min(W, H) / 430);
+        owedEmber += dt * 3.5;
+        while (owedEmber >= 1) {
+          owedEmber -= 1;
+          const fromFire = rnd() < 0.5;
+          parts.push({ x: fromFire ? fx + (rnd() - 0.5) * 34 * px : rnd() * W, y: fromFire ? fy - (40 + rnd() * 60) * px : H * (0.5 + rnd() * 0.55),
+            vx: (rnd() - 0.35) * 10 * u, vy: -(fromFire ? 20 + rnd() * 22 : 9 + rnd() * 16) * u,
+            life: 0, max: 7 + rnd() * 6, size: (0.75 + rnd() * 0.85) * u, seed: rnd() * 6.283, kind: 3 });
         }
       }
 
@@ -163,6 +183,13 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
           s.vx += (Math.sin(t * 2.3 + s.seed) * 30 + breeze * 18) * px * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy *= 0.985;
           ctx.globalAlpha = (1 - a) * (0.55 + 0.45 * Math.sin(t * 23 + s.seed));
           ctx.drawImage(ember, s.x - s.size * 2, s.y - s.size * 2, s.size * 4, s.size * 4);
+        } else if (s.kind === 3) {
+          // a slow wander on the breeze; it glows up, holds, then dies away, with a faint uneven pulse
+          s.vx += (Math.sin(t * 0.8 + s.seed) * 7 + (breeze - 0.3) * 9) * dt; s.vx *= 0.995; s.vy *= 0.999;
+          s.x += s.vx * dt; s.y += s.vy * dt;
+          const glow = Math.min(1, a / 0.14) * Math.min(1, (1 - a) / 0.4);
+          ectx.globalAlpha = glow * (0.66 + 0.24 * Math.sin(t * 5.3 + s.seed) * Math.sin(t * 1.7 + s.seed * 2.1));
+          ectx.drawImage(ember, s.x - s.size * 2.6, s.y - s.size * 2.6, s.size * 5.2, s.size * 5.2);
         } else {
           s.vx += (breeze * 9 - 1) * px * dt; s.x += s.vx * dt + Math.sin(t * 0.9 + s.seed) * 2 * px * dt; s.y += s.vy * dt;
         }
@@ -171,7 +198,7 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
-  }, [canvasRef, flameRef, lightRef]);
+  }, [canvasRef, flameRef, lightRef, emberRef]);
 }
 
 const VERT = `attribute vec2 p; varying vec2 v; void main(){ v = p * 0.5 + 0.5; v.y = 1.0 - v.y; gl_Position = vec4(p, 0.0, 1.0); }`;
@@ -262,6 +289,7 @@ export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: (
   const fire = useRef<HTMLCanvasElement>(null);
   const light = useRef<HTMLDivElement>(null);
   const flame = useRef<HTMLCanvasElement>(null);
+  const embers = useRef<HTMLCanvasElement>(null);
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
     const measure = () => {
@@ -278,7 +306,7 @@ export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: (
   const told = useRef(onReady); told.current = onReady;
   useEffect(() => { if (sharp) told.current?.(); }, [sharp]);
   const f = fit(size.w, size.h);
-  useFire(fire, flame, light, f);
+  useFire(fire, flame, light, embers, f);
   const place = { width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` };
   return (
     <div ref={box} className={`scene ${quiet ? 'scene--quiet' : ''} ${sharp ? 'is-sharp' : ''}`} aria-hidden="true">
@@ -294,6 +322,7 @@ export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: (
       )}
       <div className="scene__smoke scene__smoke--a"><i /></div>{!quiet && <div className="scene__smoke scene__smoke--b"><i /></div>}
       <div className="scene__shade" />
+      {!quiet && <canvas ref={embers} className="scene__embers" />}
     </div>
   );
 }

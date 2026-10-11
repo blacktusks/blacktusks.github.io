@@ -39,10 +39,12 @@ img { max-width: 100%; }
 .scene { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); overflow: hidden; background: #000; z-index: 0; }
 .scene__bg { position: absolute; left: 0; top: 0; max-width: none; user-select: none; will-change: transform; }
 /* the full picture and the fire arrive together, once the picture is whole */
-.scene__bg--sharp, .scene__fireset { opacity: 0; transition: opacity 0.7s ease; }
-.scene.is-sharp .scene__bg--sharp, .scene.is-sharp .scene__fireset { opacity: 1; }
+.scene__bg--sharp, .scene__fireset, .scene__embers { opacity: 0; transition: opacity 0.7s ease; }
+.scene.is-sharp .scene__bg--sharp, .scene.is-sharp .scene__fireset, .scene.is-sharp .scene__embers { opacity: 1; }
 .scene__fireset { position: absolute; inset: 0; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .scene__bg--sharp, .scene__fireset { transition: none; } }
+/* slow embers adrift over the whole scene, above its shading so the dark edges do not put them out */
+.scene__embers { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .scene__bg--sharp, .scene__fireset, .scene__embers { transition: none; } }
 .scene__fire { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
 .scene__flame { position: absolute; transform: translate(-50%, -100%); mix-blend-mode: screen; pointer-events: none; }
 /* Firelight on the ground. Overlay warms and lifts what is there, so dark stays dark. */
@@ -227,7 +229,18 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .tenet p { margin-bottom: 0.7em; text-wrap: pretty; }
 .oath { max-width: 660px; margin: clamp(10px, 5vh, 60px) auto 0; text-align: center; }
 .oath p { font: italic 400 clamp(21px, 3vw, 27px)/1.62 var(--book); color: #f5ecd9; text-shadow: 0 1px 8px #000; text-wrap: pretty; }
-.oath__name { font-style: normal; color: var(--ember-hot); padding: 0 0.15em; }
+.oath__name { font-style: normal; font-weight: 700; color: var(--ember-hot); padding: 0 0.15em; }
+/* The member's name is the one thing in the oath that is theirs: bold, with a light passing over it now and then. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .oath__name {
+    background: linear-gradient(100deg, #ff9248 0%, #ff9248 40%, #fff3d4 50%, #ff9248 60%, #ff9248 100%) 100% 0 / 280% 100% no-repeat;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; text-shadow: none;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    filter: drop-shadow(0 0 9px rgba(255, 146, 72, 0.45)); animation: oath-shine 4.6s ease-in-out infinite;
+  }
+}
+@keyframes oath-shine { 0%, 35% { background-position: 100% 0; } 75%, 100% { background-position: 0% 0; } }
+@media (prefers-reduced-motion: reduce) { .oath__name { animation: none; } }
 .oath__seal { width: 86px; height: 86px; margin: 28px auto 0; border-radius: 50%; object-fit: cover; opacity: 0.9; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(224, 82, 44, 0.35); }
 ::placeholder { color: var(--bone-3); font-style: italic; opacity: 1; }
 .lbar__search::placeholder { font-style: normal; }

@@ -207,7 +207,23 @@
 .lrow.is-on .lc-name, .lrow.is-on .lrow__icon { color: #fff; }
 .lrow.is-hidden .lc-name { text-decoration: line-through; opacity: 0.55; }
 
-.ledger__card { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: clamp(10px, 2.4vh, 26px) clamp(12px, 2.6vw, 40px) 16px; }
+.ledger__card { min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; padding: clamp(10px, 2.4vh, 26px) clamp(12px, 2.6vw, 40px) 16px;
+  touch-action: pan-y; overscroll-behavior-x: none; }
+/* The open item: one piece, so a sideways swipe on a phone can carry it off and bring the next one in. */
+.icard__swipe { width: 100%; display: flex; flex-direction: column; align-items: center; }
+.icard__swipe.is-next { animation: icard-next 0.22s ease-out; }
+.icard__swipe.is-prev { animation: icard-prev 0.22s ease-out; }
+@keyframes icard-next { from { transform: translate3d(56px, 0, 0); opacity: 0.15; } }
+@keyframes icard-prev { from { transform: translate3d(-56px, 0, 0); opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .icard__swipe.is-next, .icard__swipe.is-prev { animation: none; } }
+/* Where the card stands in the list, with arrows for those who would sooner tap than swipe. Phones only: elsewhere the list is alongside. */
+.icard__pager { display: none; align-items: center; justify-content: center; gap: 6px; width: 100%; flex: 0 0 auto; margin-top: -4px;
+  font: 400 13px/1 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--bone-3); }
+.icard__pager span { min-width: 9.5em; text-align: center; }
+.icard__pager button { appearance: none; width: 48px; height: 38px; border: 0; background: none; color: var(--bone-2); cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+.icard__pager button::before { content: ''; width: 9px; height: 9px; border-left: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateX(2px) rotate(45deg); }
+.icard__pager button.is-next::before { transform: translateX(-2px) rotate(-135deg); }
+.icard__pager button:disabled { color: var(--line); cursor: default; }
 .icard__view { flex: 0 0 auto; width: 100%; height: clamp(150px, 36vh, 360px); display: flex; align-items: center; justify-content: center; }
 .icard__view img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; min-height: 0; object-fit: contain; filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.75)); }
 /* pictures made from the game's own models come on a square with air round them, so they may use the whole box */
@@ -249,6 +265,7 @@
   .ledger__card { display: none; }
   .ledger.has-card .ledger__list { display: none; }
   .ledger.has-card .ledger__card { display: flex; background: rgba(0, 0, 0, 0.6); }
+  .icard__pager { display: flex; }
   .ledger__close { display: inline-flex; margin-left: auto; }
   .lhead, .lrow { grid-template-columns: minmax(0, 1fr) 54px 40px 84px; padding: 0 12px; }
   .lc-stat, .lc-wgt { display: none; }

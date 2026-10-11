@@ -280,6 +280,30 @@ ok((await velyn.locator('.ore').count()) === 1, 'unticking an ore hides its mark
   await z.context().close();
 }
 
+console.log('discord status');
+{
+  // Discord's widget names members by their nickname in the clan server. A member whose name here is the
+  // same needs nothing on their profile; anyone else is matched by the Discord name they enter.
+  t.backend.discordStub.status = 200;
+  t.backend.discordStub.body = { name: 'The Black Tusks', presence_count: 3, members: [
+    { id: '0', username: 'GORZA GRA-LARGASH', discriminator: '0000', status: 'online', game: { name: 'The Elder Scrolls V: Skyrim Special Edition' } },
+    { id: '1', username: 'Velyn of the Rift', discriminator: '0000', status: 'idle' },
+    { id: '2', username: 'Some Stranger', discriminator: '0000', status: 'online' }] };
+  await go(nick, '/members', 900);
+  await nick.getByRole('button', { name: 'Discord link' }).click();
+  ok((await nick.locator('.modal .steps').textContent()).includes('Engagement'), 'the Discord link steps point at Server Settings, Engagement');
+  await nick.getByLabel('Server ID').fill('1541830682387685516'); await nick.locator('.modal').getByRole('button', { name: 'Save' }).click();
+  await nick.waitForSelector('.modal .note'); await nick.waitForTimeout(900);
+  const told = (await nick.locator('.modal').textContent()).replace(/\s+/g, ' ');
+  ok(told.includes('Connected to The Black Tusks') && told.includes('matching no member here: Some Stranger'), 'the Forgemaster is told who is online in Discord but matches no member', told.slice(-260));
+  await nick.locator('.modal').getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(300);
+  const row = async (name) => (await nick.locator('.roster__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
+  ok((await row('Gorza gra-Largash')).includes('In the realm'), 'a member is found in Discord by their own name, with no Discord name on their profile', await row('Gorza gra-Largash'));
+  ok((await row('Velyn of the Rift')).includes('In Discord'), 'someone online but not in the game reads as in Discord');
+  ok((await row('Ugak')).includes('Offline') && !(await nick.locator('.roster').textContent()).includes('Not linked'), 'everyone else reads as offline; nobody is "not linked" any more');
+  ok((await nick.locator('.page__sub').textContent()).includes('1 in the realm now'), 'the heading counts who is in the realm');
+}
+
 console.log('pricing ledger');
 await velyn.context().close(); await go(nick, '/code', 300);
 await go(ugak, '/ledger', 1800);
@@ -302,6 +326,18 @@ ok(!(await ugak.locator('.ledger').textContent()).includes('Keys'), 'there is no
     'an item shows the picture made from its game model');
   ok(await ugak.evaluate(() => { const v = document.querySelector('.icard__view').getBoundingClientRect(), i = document.querySelector('.icard__view img').getBoundingClientRect(); return i.top >= v.top - 1 && i.bottom <= v.bottom + 1 && i.height > 120; }),
     'and the picture stays inside its frame, above the item card');
+}
+{ // later trims: enchanted variants, improvement notes, the Blacksmith's potions and the dragon priest masks
+  ok(!(await ugak.locator('.lfilters').textContent()).includes('Enchanted'), 'there is no "Enchanted variants" switch');
+  const named = async (q) => { await ugak.getByLabel('Filter by name').fill(q); await ugak.waitForTimeout(400); return (await ugak.locator('.lrow .lc-name').allTextContents()).map((x) => x.replace('★', '').trim()); };
+  ok((await named('of embers')).length === 0, 'generic enchanted variants are gone', (await named('of embers')).join('|'));
+  const smith = await named("blacksmith's");
+  ok(smith.length > 0 && !smith.some((n) => /Potion|Draught|Philter|Elixir/.test(n)), "the Blacksmith's potions are gone", smith.join('|'));
+  ok(!(await named('krosis')).includes('Krosis') && (await named('wooden mask')).length === 0 && !(await named('miraak')).includes('Miraak'), 'the dragon priest masks are gone');
+  ok((await named('krosis')).some((n) => /Krosis' (Armor|Robes)/.test(n)), "the armor sets named after the priests stay");
+  await named('daedric nodachi'); await ugak.locator('.lrow', { hasText: 'Daedric Nodachi' }).first().click(); await ugak.waitForTimeout(500);
+  ok(!/Improved at|grindstone|workbench/i.test(await ugak.locator('.ledger__card').textContent()), 'no weapon or armor improvement note on an item');
+  ok(/\.webp\?v=[0-9a-f]{6}$/.test(await ugak.locator('.icard__view img').getAttribute('src')), "a picture's address carries a stamp of its contents", await ugak.locator('.icard__view img').getAttribute('src'));
 }
 await ugak.getByLabel('Filter by name').fill('iron ingot'); await ugak.waitForTimeout(400); await ugak.locator('.lrow', { hasText: 'Iron Ingot' }).first().click(); await ugak.waitForTimeout(500);
 const card = async (p) => (await p.locator('.ledger__card').textContent()).replace(/\s+/g, ' ');
@@ -340,6 +376,36 @@ for (const r of ['/', '/code', '/notices', '/oath', '/members', '/mine', '/expan
   await go(phone, r, r === '/map' ? 2200 : 900);
   const over = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 1, `no sideways scroll on a phone at ${r}`, String(over));
+}
+
+{ // on a phone the open card can be swiped (or stepped with its arrows) to the next and the previous item
+  await go(phone, '/ledger', 1500);
+  await phone.getByLabel('Filter by name').fill('iron'); await phone.waitForTimeout(500);
+  const names = (await phone.locator('.lrow .lc-name').allTextContents()).map((x) => x.replace('★', '').trim());
+  await phone.locator('.lrow').first().click(); await phone.waitForSelector('.icard__name');
+  const name = async () => (await phone.locator('.icard__name').textContent()).trim();
+  const pager = async () => (await phone.locator('.icard__pager span').textContent()).trim();
+  const swipe = (dx, dy = 0) => phone.evaluate(async ({ dx, dy }) => {
+    const el = document.querySelector('.ledger__card'); const b = el.getBoundingClientRect(); const x0 = b.left + b.width / 2, y0 = b.top + 160;
+    const fire = (type, x, y) => { const tp = new Touch({ identifier: 1, target: el, clientX: x, clientY: y }); el.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], targetTouches: type === 'touchend' ? [] : [tp], changedTouches: [tp] })); };
+    fire('touchstart', x0, y0);
+    for (let i = 1; i <= 8; i++) { fire('touchmove', x0 + (dx * i) / 8, y0 + (dy * i) / 8); await new Promise((r) => setTimeout(r, 16)); }
+    fire('touchend', x0 + dx, y0 + dy);
+  }, { dx, dy });
+  ok((await name()) === names[0] && (await pager()).startsWith('1 of '), 'the open card says where it stands in the list', `${await name()} / ${await pager()}`);
+  await swipe(-190); await phone.waitForTimeout(350);
+  ok((await name()) === names[1] && (await pager()).startsWith('2 of '), 'a swipe to the left brings the next item', `${await name()} (wanted ${names[1]})`);
+  await swipe(190); await phone.waitForTimeout(350);
+  ok((await name()) === names[0], 'a swipe to the right goes back to the one before', await name());
+  await swipe(190); await phone.waitForTimeout(350);
+  ok((await name()) === names[0], 'there is nothing before the first item, so the card stays');
+  await swipe(-30, 220); await phone.waitForTimeout(300);
+  ok((await name()) === names[0], 'scrolling the card up and down does not change the item');
+  await phone.getByRole('button', { name: 'Next item' }).click(); await phone.waitForTimeout(300);
+  ok((await name()) === names[1], 'the arrow does the same as the swipe');
+  ok(await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth <= 1), 'and nothing is pushed off the side of the screen');
+  await phone.getByRole('button', { name: 'Back to list' }).click(); await phone.waitForTimeout(300);
+  ok(await phone.locator('.lrow.is-on').first().textContent().then((x) => x.includes(names[1])), 'back at the list, the item last looked at is the one marked');
 }
 
 const real = t.errors.filter((e) => !/401|403|400 \(Bad Request\)/.test(e));

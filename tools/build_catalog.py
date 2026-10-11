@@ -299,11 +299,16 @@ def dump(name, obj):
 # Skyrim itself (it carries the value of Barenziah's crown) and was never an item.
 # Also left out: the generic enchanted variants of ordinary gear ("Iron Sword of
 # Embers" and the like). Named enchanted items such as artifacts stay.
+# And: the Blacksmith's potions (they only help with improving gear, which the realm
+# does not have) and the dragon priest masks, Miraak's and the Wooden Mask included.
+# The Armory of the Dragon Cult's armor sets named after the priests are not masks and stay.
+DROP_EDID = re.compile(r"^(FortifySkillSmithing\d|ArmorDragonPriestMask|DLC2ArmorAcolyteMask|DLC2MKMiraakMask|DLC2MiraakMask)")
 KEEP_BOOKS = {"The Code of Malacath"}
 KEEP_TOOLS = {"Lockpick", "Linen Wrap"}
 DROP_MISC_TYPES = {"Clutter", "Dragon Claw", "Misc"}
 def unwanted(r):
     if r[9] & 1: return True
+    if DROP_EDID.match(kept[r[0]].get("edid") or ""): return True
     if r[2] == "keys": return True
     if r[2] == "books": return r[3] != "Spell Tome" and r[1] not in KEEP_BOOKS
     if r[2] == "misc":
