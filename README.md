@@ -12,7 +12,7 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 
 | Screen | Who can change it |
 | --- | --- |
-| Code of Mauloch | Fixed text. Open to guests. |
+| Code of Mauloch | Open to guests. A screen of its own: The Seven Tenets (fixed text; Back returns here), and Malacath's statue in drifting fog with the home screen's embers. Praise Malacath sends up green praying hands in fire and raises one of his sayings out of the fog (`src/lib/malacath.ts`): never the one just said, one at a time, held ten seconds. |
 | Black Tusk Oath | Fixed text, with the member's own name in it, bold and with a light passing over it. |
 | Notice Board: announcements | Officers: Chieftain, Right Tusk, Left Tusk, Wise Woman, Forgemaster. Each notice can go to everyone, to chosen members, or stay a private draft, and can take itself down after a set time. |
 | Notice Board: change log | Forgemaster only. Each entry folds shut; the newest starts open. |
@@ -21,9 +21,11 @@ Unofficial fan project. Not affiliated with Bethesda Softworks, ZeniMax Media or
 | Deceased | The same list as Members, over the members who carry the Deceased tag (they are listed here and not under Members). The fallen have no online status. A fallen card has no bio and no hours; it carries a passage of honor, a cause of death and a date of passing, all written by officers. The date is empty until one is entered, or reads UNKNOWN. Anyone reading the card can press Pay Respect: green praying hands and a fire rise from the button and fade (nothing is saved). |
 | Roles | A short description of every tag. Officers can put the clan's own words in place of any of them. |
 | Mine of the Black Tusks | Officers. Same visibility choices as notices. |
-| Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar. |
+| Expansion Goals | Officers edit stages and update what has been gathered. Each stage shows its own progress bar and folds; a finished stage starts folded and the stage being worked on starts open. |
 | Mining Map | Any member pings an ore vein. Officers approve or deny pings; their own markers go straight on the map. |
 | Pricing Ledger | Officers set tier, clan price, notes and a picture for any item. Every item starts with a picture rendered from its own game model. On a phone, an open item can be swiped left or right (or stepped with the arrows above its picture) to the next or previous item in the list. |
+
+Phones are kept upright: the installed app opens in portrait (Android holds it there), and a phone turned on its side is asked to turn back. Tablets and computers can be held any way. The game data files are installed with the app itself, so the ledger never runs on half a file.
 
 Tags work like Discord roles and a member can hold several. The developer tag is called **Forgemaster**. A member whose character has died gets the **Deceased** tag: they keep their account and full access, and move from the Members screen to the Deceased screen.
 
@@ -89,7 +91,7 @@ npm install
 npm run backend          # local stand-in for Supabase on :54321 (prints the two env values)
 npm run dev              # the app on :5173
 node tests/api.mjs       # 319 permission checks against real Postgres rules
-node tests/e2e.mjs       # 188 browser checks of every screen and role
+node tests/e2e.mjs       # 214 browser checks of every screen and role
 node tests/look_fit.mjs  # the main menu at 27 screen sizes: nothing off-screen, overlapping or scrolling
 node tests/built.mjs     # production build served from a sub-path, as GitHub Pages does
 ```

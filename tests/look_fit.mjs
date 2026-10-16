@@ -31,11 +31,22 @@ for (const who of ['guest', 'member']) {
   for (const [w, h] of SIZES) {
     const ctx = await t.browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, isMobile: w < 1000 && h < 1000, hasTouch: w < 1000 });
     const page = await ctx.newPage();
-    if (who === 'member') { await page.goto(t.base + '#/sign-in'); await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click(); }
+    // a phone on its side is covered (it asks to be turned upright), so sign in upright and then turn it
+    const turned = w > h && h <= 500 && w < 1000;
+    if (who === 'member') {
+      if (turned) await page.setViewportSize({ width: h, height: w });
+      await page.goto(t.base + '#/sign-in'); await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click();
+      if (turned) { await page.waitForSelector('.menu__nav'); await page.setViewportSize({ width: w, height: h }); }
+    }
     else await page.goto(t.base);
     await page.waitForSelector('.menu__nav'); await page.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 20000 });
     await page.waitForTimeout(500);
     const res = await check(page, who);
+    // a phone on its side is asked to turn upright; nothing else is
+    const sideways = w > h && h <= 500 && w < 1000;
+    const cover = await page.evaluate(() => { const el = document.querySelector('.upright'); const b = el?.getBoundingClientRect();
+      return el && getComputedStyle(el).display !== 'none' && b.width >= window.innerWidth - 1 && b.height >= window.innerHeight - 1 && /upright/i.test(el.textContent); });
+    if (!!cover !== sideways) res.problems.push(sideways ? 'a phone on its side is not asked to turn upright' : 'the turn-upright cover shows where it should not');
     if (res.problems.length) { bad++; console.log('PROBLEM', JSON.stringify(res)); } else console.log('ok', who, res.size, 'text', res.font + 'px', 'banner', res.banner + 'px');
     if (who === 'member' && [[320, 480], [360, 640], [390, 844], [568, 320], [844, 390], [1024, 768], [1600, 900]].some(([a, b]) => a === w && b === h)) await page.screenshot({ path: `tests/shots/fit-${w}x${h}.png` });
     await ctx.close();

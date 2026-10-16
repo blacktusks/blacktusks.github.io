@@ -115,6 +115,8 @@ export default function Expansion() {
   const { profile } = useAuth(); const officer = isOfficer(profile!.tags);
   const [stages, setStages] = useState<Stage[] | null>(null); const [resources, setResources] = useState<Resource[]>([]);
   const [editing, setEditing] = useState<Stage | 'new' | null>(null); const [error, setError] = useState('');
+  // Stages fold. Until someone opens or shuts one, only the stage being worked on (the first not yet gathered) is open.
+  const [opened, setOpened] = useState<Set<string> | null>(null);
 
   const load = useCallback(async () => {
     const [s, r] = await Promise.all([supabase.from('expansion_stages').select('*').order('sort'), supabase.from('expansion_resources').select('*').order('sort')]);
@@ -139,6 +141,24 @@ export default function Expansion() {
     return [...map.values()];
   }, [resources]);
   const overall = stagePct(totals);
+  const isDone = useCallback((id: string) => { const rs = resources.filter((r) => r.stage_id === id); return rs.length > 0 && rs.every((r) => r.have >= r.goal); }, [resources]);
+  const current = useMemo(() => stages?.find((s) => !isDone(s.id))?.id ?? null, [stages, isDone]);
+  const isOpen = (id: string) => (opened ? opened.has(id) : id === current || id === 'total');
+  const toggle = (id: string) => setOpened((was) => {
+    const next = new Set(was ?? [current, 'total'].filter(Boolean) as string[]);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const head = (id: string, title: string, children?: React.ReactNode) => (
+    <div className="panel__head stage__head">
+      <h2 className="panel__title stage__h">
+        <button className="stage__toggle" aria-expanded={isOpen(id)} aria-controls={`stage-${id}`} onClick={() => toggle(id)}>
+          <span className="stage__chev" aria-hidden="true" />{title}
+        </button>
+      </h2>
+      {children}
+    </div>
+  );
 
   return (
     <Page title="Expansion Goals" sub="What Largashbur needs, stage by stage" width="wide"
@@ -154,13 +174,10 @@ export default function Expansion() {
               const done = rs.length > 0 && rs.every((r) => r.have >= r.goal);
               const gathered = stagePct(rs);
               return (
-                <section key={s.id} className={`panel stage ${done ? 'is-done' : ''}`}>
-                  <div className="panel__head">
-                    <h2 className="panel__title">{s.title}</h2>
-                    {done ? <span className="stage__done">Ready to build</span> : officer && <button className="btn btn--small" onClick={() => setEditing(s)}>Edit</button>}
-                  </div>
+                <section key={s.id} className={`panel stage ${done ? 'is-done' : ''} ${isOpen(s.id) ? 'is-open' : 'is-shut'}`}>
+                  {head(s.id, s.title, done ? <span className="stage__done">Ready to build</span> : officer && isOpen(s.id) && <button className="btn btn--small" onClick={() => setEditing(s)}>Edit</button>)}
                   <StageBar label={s.title} value={gathered} />
-                  <div className="panel__body">
+                  {isOpen(s.id) && <div className="panel__body" id={`stage-${s.id}`}>
                     {s.details && <p className="muted" style={{ marginBottom: 10 }}>{s.details}</p>}
                     {rs.length === 0 && <p className="muted">Nothing listed yet.</p>}
                     {rs.map((r) => (
@@ -171,14 +188,14 @@ export default function Expansion() {
                       </div>
                     ))}
                     {done && officer && <div className="row row--end" style={{ marginTop: 8 }}><button className="btn btn--small" onClick={() => setEditing(s)}>Edit</button></div>}
-                  </div>
+                  </div>}
                 </section>
               );
             })}
-            <section className="panel stage stage--total">
-              <div className="panel__head"><h2 className="panel__title">Total</h2></div>
+            <section className={`panel stage stage--total ${isOpen('total') ? 'is-open' : 'is-shut'}`}>
+              {head('total', 'Total')}
               <StageBar label="Every stage together" value={overall} />
-              <div className="panel__body">
+              {isOpen('total') && <div className="panel__body" id="stage-total">
                 {totals.map((t) => (
                   <div className="res" key={t.name}>
                     <div className="res__name">{t.name}</div>
@@ -186,7 +203,7 @@ export default function Expansion() {
                     <Bar have={t.have} goal={t.goal} />
                   </div>
                 ))}
-              </div>
+              </div>}
             </section>
           </div>
         </>

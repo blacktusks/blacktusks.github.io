@@ -41,6 +41,16 @@ ok(manifest?.display === 'standalone' && manifest.icons?.length === 3 && manifes
 ok(await page.evaluate(() => !!document.querySelector('link[rel=apple-touch-icon]') && document.querySelector('meta[name=apple-mobile-web-app-capable]')?.content === 'yes'), 'iOS home-screen tags are present');
 const sw = await page.evaluate(async () => { const r = await navigator.serviceWorker.ready; return r.scope; });
 ok(sw.endsWith(PREFIX), 'the service worker registers for the sub-path', sw);
+{ // the game data is installed with the app: with no signal at all, the recipes still load
+  await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => undefined);
+  await page.context().setOffline(true);
+  const got = await page.evaluate(async () => {
+    const r = await fetch('./data/details.json?v=' + Math.random().toString(36).slice(2)).catch(() => null);
+    return r && r.ok ? Object.keys(await r.json()).length : 0;
+  });
+  await page.context().setOffline(false);
+  ok(got > 1000, 'the recipes come from the installed app, even offline and whatever build stamp is asked for', String(got));
+}
 ok(await page.evaluate(() => document.fonts.ready.then(() => document.fonts.check('300 20px "Antonio Variable"'))), 'the menu font loads');
 await page.goto(base + '#/sign-in'); await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click();
 await page.waitForSelector('.menu__nav'); ok((await page.locator('.menu__item').count()) === 12, 'sign-in works in the built app');

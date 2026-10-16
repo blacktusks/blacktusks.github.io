@@ -24,9 +24,60 @@ ok(await g.evaluate(() => document.querySelector('.scene').classList.contains('i
 ok(await g.evaluate(() => { const se = document.scrollingElement; return se.scrollHeight <= window.innerHeight + 1 && se.scrollWidth <= window.innerWidth + 1; }), 'the main menu never scrolls');
 ok((await menu(g)).join('|') === 'Sign In|Code of Mauloch', 'guest menu is Sign In and Code of Mauloch', (await menu(g)).join('|'));
 await g.getByRole('button', { name: 'Code of Mauloch' }).click();
-ok((await g.locator('.tenet').count()) === 7, 'Code of Mauloch shows seven tenets');
+await g.waitForSelector('.shrine'); await g.waitForFunction(() => document.querySelector('.shrine__statue')?.complete);
+ok(g.url().endsWith('#/code') && await has(g, 'button', 'The Seven Tenets') && await has(g, 'button', 'Praise Malacath') && (await g.locator('.tenet').count()) === 0,
+  'Code of Mauloch opens a menu of its own: the Seven Tenets and Praise Malacath');
+ok(await g.evaluate(() => { const i = document.querySelector('.shrine__statue'); const b = i.getBoundingClientRect(); return i.naturalWidth > 900 && b.height > 200; }), 'the statue of Malacath stands on the screen');
+ok(await g.evaluate(() => {
+  const order = ['.shrine__nav', '.shrine__stage', '.shrine__praise'].map((q) => document.querySelector(q).getBoundingClientRect().top);
+  return order[0] < order[1] && order[1] < order[2];
+}), 'the Seven Tenets button, then the statue, then the Praise button');
+ok((await g.locator('.shrine__fog').count()) === 3 && await g.evaluate(() => getComputedStyle(document.querySelector('.shrine__fog--far i')).animationName === 'drift-fog'
+  && +getComputedStyle(document.querySelector('.shrine__fog--far')).zIndex < +getComputedStyle(document.querySelector('.shrine__statue')).zIndex), 'fog drifts behind the statue');
+ok(await g.evaluate(async () => {   // the embers are drawing
+  const c = document.querySelector('.shrine__embers'); await new Promise((r) => setTimeout(r, 900));
+  const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 20) lit++; return lit > 40;
+}), 'embers drift over the shrine, as on the home screen');
+ok(await g.evaluate(() => document.scrollingElement.scrollHeight <= window.innerHeight + 1), 'the shrine fits the screen without scrolling');
+{ // Praise Malacath: green hands in fire, and one of his sayings out of the fog
+  const words = await g.evaluate(async () => (await import('/src/lib/malacath.ts')).MALACATH_WORDS);
+  ok(words.length >= 50 && new Set(words).size === words.length, `a bank of ${words.length} different sayings`);
+  const never = await g.evaluate(async (count) => {
+    const { pickWord } = await import('/src/screens/CodeOfMauloch.tsx');
+    let last = -1, repeats = 0; const seen = new Set();
+    for (let i = 0; i < 3000; i++) { const n = pickWord(last, count); if (n === last || n < 0 || n >= count) repeats++; seen.add(n); last = n; }
+    return { repeats, seen: seen.size };
+  }, words.length);
+  ok(never.repeats === 0 && never.seen === words.length, 'the saying is never the one just said, and every one comes up in time', JSON.stringify(never));
+  await g.getByRole('button', { name: 'Praise Malacath' }).click(); await g.waitForTimeout(250);
+  const first = await g.evaluate(() => {
+    const b = document.querySelector('.shrine .burst'); const z = (q) => +getComputedStyle(b.querySelector(q)).zIndex;
+    return { hands: !!b?.querySelector('.burst__hands'), green: /hue-rotate/.test(getComputedStyle(b.querySelector('.burst__hands')).filter), behind: z('.burst__fire') < z('.burst__hands'),
+      sparks: b.querySelectorAll('.burst__spark').length, text: document.querySelector('.oracle__text')?.textContent };
+  });
+  ok(first.hands && first.green && first.behind && first.sparks === 10, 'praising sends up green hands with fire behind them and small flames flying out', JSON.stringify(first));
+  ok(words.includes(first.text), 'and one of his sayings rises from the fog', first.text);
+  ok(await g.evaluate(() => getComputedStyle(document.querySelector('.oracle__in')).animationName === 'oracle-in' && getComputedStyle(document.querySelector('.oracle__in')).animationDuration === '14s'),
+    'it comes out of the fog, holds, and sinks back over fourteen seconds (ten of them held)');
+  ok(await g.evaluate(() => { const st = getComputedStyle(document.querySelector('.oracle__text')); return /drop-shadow/.test(st.filter) && /gradient/.test(st.backgroundImage) && st.animationName === 'oracle-shine'; }),
+    'the words glow, with a light passing over them');
+  for (let i = 0; i < 4; i++) { await g.getByRole('button', { name: 'Praise Malacath' }).click(); await g.waitForTimeout(80); }
+  ok((await g.locator('.oracle').count()) === 1 && (await g.locator('.oracle__text').textContent()) === first.text && (await g.locator('.shrine .burst').count()) >= 3,
+    'praising again while he speaks sends more fire, but no second saying');
+  await g.waitForTimeout(14200);
+  ok((await g.locator('.oracle').count()) === 0, 'after its time the saying is gone back into the fog');
+  await g.getByRole('button', { name: 'Praise Malacath' }).click(); await g.waitForTimeout(250);
+  const second = await g.locator('.oracle__text').textContent();
+  ok(words.includes(second) && second !== first.text, 'the next praise brings a different saying', `${first.text} / ${second}`);
+}
+await g.getByRole('button', { name: 'The Seven Tenets' }).click();
+ok((await g.locator('.tenet').count()) === 7 && g.url().endsWith('#/code/tenets'), 'The Seven Tenets opens the usual tenets screen');
 ok((await g.locator('.tenet__name').allTextContents())[6] === 'Let Every Clan Keep Its Fire Without Treachery', 'seventh tenet title matches');
 ok((await g.textContent('.scroll')).includes('Treachery poisons every Orcish fire.'), 'closing line present');
+await g.getByRole('link', { name: 'Back' }).click(); await g.waitForSelector('.shrine');
+ok(g.url().endsWith('#/code'), 'Back from the tenets returns to the Code of Mauloch');
+await g.getByRole('link', { name: 'Back' }).click(); await g.waitForSelector('.menu__nav');
+ok(g.url().replace(/\/$/, '').endsWith('#'), 'and Back from there returns to the main menu', g.url());
 await go(g, '/members'); ok(g.url().endsWith('#/sign-in'), 'guests are sent to sign in from member screens');
 await g.getByLabel('Name').fill('nick'); await g.getByLabel('Password').fill('wrong-password'); await g.getByRole('button', { name: 'Sign in' }).click();
 await g.waitForSelector('.error'); ok((await g.textContent('.error')).includes('do not match'), 'wrong password is refused with a clear message');
@@ -128,12 +179,19 @@ ok((await fallenCard(nick)).includes('Passage of honor') && (await fallenCard(ni
   'a fallen card has a passage of honor above the cause of death', await fallenCard(nick));
 { // Pay Respect: green praying hands and a fire rise from the button and are gone in a moment
   await nick.getByRole('button', { name: 'Pay Respect' }).click(); await nick.waitForTimeout(250);
-  const burst = await nick.evaluate(() => { const b = document.querySelector('.respect__burst'); return b && { text: b.textContent, tint: getComputedStyle(b.querySelector('.respect__pray')).filter, fire: getComputedStyle(b.querySelector('.respect__fire')).filter, anim: getComputedStyle(b).animationName }; });
-  ok(burst?.text === '🙏🔥' && /hue-rotate/.test(burst.tint) && burst.fire === 'none' && burst.anim === 'respect-rise', 'Pay Respect shows green praying hands and a plain fire', JSON.stringify(burst));
+  const burst = await nick.evaluate(() => {
+    const b = document.querySelector('.modal .burst'); if (!b) return null; const z = (q) => +getComputedStyle(b.querySelector(q)).zIndex;
+    const sparks = [...b.querySelectorAll('.burst__spark')];
+    return { tint: getComputedStyle(b.querySelector('.burst__hands')).filter, fire: getComputedStyle(b.querySelector('.burst__fire')).filter, behind: z('.burst__fire') < z('.burst__hands'),
+      sparks: sparks.length, spread: new Set(sparks.map((s) => s.style.getPropertyValue('--dx'))).size, turns: sparks.every((s) => parseFloat(s.style.getPropertyValue('--r1')) !== 0),
+      flames: sparks.every((s) => s.textContent === '🔥'), anim: getComputedStyle(sparks[0]).animationName };
+  });
+  ok(burst && /hue-rotate/.test(burst.tint) && burst.fire === 'none' && burst.behind, 'Pay Respect shows green praying hands with a plain fire behind them', JSON.stringify(burst));
+  ok(burst?.sparks === 10 && burst.spread === 10 && burst.turns && burst.flames && burst.anim === 'burst-spark', 'and small flames fly out all round, each turning as it goes', JSON.stringify(burst));
   await nick.getByRole('button', { name: 'Pay Respect' }).click(); await nick.waitForTimeout(150);
-  ok((await nick.locator('.respect__burst').count()) === 2, 'pressing again pays respect again');
-  await nick.waitForTimeout(1700);
-  ok((await nick.locator('.respect__burst').count()) === 0 && (await nick.locator('.modal').count()) === 1, 'they fade and are gone within a moment, and the card stays open');
+  ok((await nick.locator('.modal .burst').count()) === 2, 'pressing again pays respect again');
+  await nick.waitForTimeout(2700);
+  ok((await nick.locator('.modal .burst').count()) === 0 && (await nick.locator('.modal').count()) === 1, 'they fade and are gone within a moment, and the card stays open');
 }
 ok((await fallenCard(nick)).includes('Cause of death') && (await fallenCard(nick)).includes('Not yet recorded') && (await fallenCard(nick)).includes('Date of passing')
   && (await nick.locator('.fallen__date.is-blank').count()) === 1 && (await nick.locator('.fallen__date').textContent()).trim() === ''
@@ -291,6 +349,22 @@ ok((await ugak.locator('.stage').first().textContent()).includes('500'), 'the Wi
 ok((await ugak.locator('.stage').first().locator('.stagebar__pct').textContent()).trim() === '0%' && (await ugak.locator('.stage').first().locator('.stagebar__track span').evaluate((e) => e.style.width)) !== '0%',
   "the first stage's own bar moved (500 of 16,000 gold is under 1%)");
 ok(!(await has(ugak, 'button', 'Add a stage')) && !(await has(ugak, 'button', 'Edit')), 'members cannot edit goals');
+{ // stages fold: only the stage being worked on starts open
+  const state = async (p) => p.locator('.stage').evaluateAll((els) => els.map((e) => (e.classList.contains('is-open') ? 'open' : 'shut') + (e.querySelector('.panel__body') ? '+body' : '')));
+  ok((await state(ugak)).join() === 'open+body,shut,shut,shut,shut,open+body', 'the first unfinished stage is open, later stages are folded, the total is open', (await state(ugak)).join());
+  ok((await ugak.locator('.stage.is-shut .stagebar').count()) === 4, 'a folded stage still shows its progress bar');
+  await ugak.getByRole('button', { name: 'Stage 3: Cooking Hut' }).click(); await ugak.waitForTimeout(200);
+  ok((await state(ugak))[2] === 'open+body' && (await ugak.getByRole('button', { name: 'Stage 3: Cooking Hut' }).getAttribute('aria-expanded')) === 'true', 'pressing a stage opens it');
+  await ugak.getByRole('button', { name: 'Stage 1: Wall Upgrade & Extension' }).click(); await ugak.waitForTimeout(200);
+  ok((await state(ugak))[0] === 'shut', 'and pressing it again folds it');
+  // once a stage is gathered in full it folds, and the next one opens
+  const before = (await t.backend.raw.query(`select id, have from public.expansion_resources r where stage_id = (select id from public.expansion_stages where sort = 1)`)).rows;
+  await t.backend.raw.query(`update public.expansion_resources set have = goal where stage_id = (select id from public.expansion_stages where sort = 1)`);
+  await go(ugak, '/expansion', 900); await ugak.waitForSelector('.stage--total');
+  ok((await state(ugak)).join() === 'shut,open+body,shut,shut,shut,open+body' && (await ugak.locator('.stage').first().textContent()).includes('Ready to build'),
+    'a completed stage is folded by default and the next upcoming stage is open', (await state(ugak)).join());
+  for (const r of before) await t.backend.raw.query(`update public.expansion_resources set have = $1 where id = $2`, [r.have, r.id]);
+}
 await sharn.context().close(); await go(yatul, '/code', 300);
 
 console.log('roles');
@@ -316,7 +390,7 @@ console.log('roles');
   await ugak.getByText('Durak Iron-Jaw').click(); await ugak.waitForSelector('.modal');
   ok((await ugak.textContent('.modal')).includes('Fell holding the gate against a giant.') && (await ugak.textContent('.modal')).includes('Durak stood where others ran') && !(await has(ugak, 'button', 'Edit')), 'a member reads a fallen card but cannot edit it');
   await ugak.getByRole('button', { name: 'Pay Respect' }).click(); await ugak.waitForTimeout(250);
-  ok((await ugak.locator('.respect__burst').count()) === 1, 'and can pay their respects');
+  ok((await ugak.locator('.modal .burst').count()) === 1, 'and can pay their respects');
   await ugak.locator('.modal').getByRole('button', { name: 'Close' }).click();
 }
 
@@ -453,6 +527,21 @@ console.log('pop-ups');
 
 console.log('pricing ledger');
 await velyn.context().close(); await go(nick, '/code', 300);
+{ // the recipes file fails to arrive: the card says so, rather than calling a made item "found", and tries again
+  const p = await user('velyn', 'TestPass123', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  let blocked = true;
+  await p.route(/\/data\/details\.json/, (route) => (blocked ? route.abort() : route.continue()));
+  await go(p, '/ledger', 1500); await p.getByLabel('Filter by name').fill('warchief heavy battlecrown'); await p.waitForTimeout(500);
+  await p.locator('.lrow').first().click(); await p.waitForSelector('.icard__name');
+  await p.waitForSelector('.icard__missing', { timeout: 15000 }).catch(() => undefined);
+  const card = (await p.locator('.icard').textContent()).replace(/\s+/g, ' ');
+  ok(card.includes('did not load') && !card.includes('Not craftable') && !/How to get it\s*(Found|Made)/.test(card), 'without the recipes the card says they did not load, and does not call the item found', card.slice(0, 300));
+  blocked = false; await p.getByRole('button', { name: 'Try again' }).click();
+  await p.waitForFunction(() => /Made at a forge/.test(document.querySelector('.icard')?.textContent ?? ''), null, { timeout: 15000 }).catch(() => undefined);
+  const after = (await p.locator('.icard').textContent()).replace(/\s+/g, ' ');
+  ok(after.includes('Made at a forge') && after.includes('Smelts down into') && /How to get it\s*Made/.test(after), 'Try again brings the recipe back: Made, and what it smelts into', after.slice(0, 300));
+  await p.context().close();
+}
 await go(ugak, '/ledger', 1800);
 ok((await ugak.title()) === 'Pricing Ledger | Black Tusk Companion', 'the ledger names its browser tab', await ugak.title());
 ok(Number((await ugak.locator('.ledger__count b').first().textContent()).replace(/,/g, '')) > 3500, 'the ledger lists thousands of items');
@@ -524,7 +613,7 @@ ok((await menu(nick)).join('|') === 'Sign In|Code of Mauloch', 'signing out retu
 console.log('phone');
 await nick.context().close();
 const phone = await user('ugak', 'TestPass123', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-for (const r of ['/', '/code', '/notices', '/oath', '/members', '/deceased', '/roles', '/mine', '/expansion', '/map', '/ledger']) {
+for (const r of ['/', '/code', '/code/tenets', '/notices', '/oath', '/members', '/deceased', '/roles', '/mine', '/expansion', '/map', '/ledger']) {
   await go(phone, r, r === '/map' ? 2200 : 900);
   const over = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 1, `no sideways scroll on a phone at ${r}`, String(over));

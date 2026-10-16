@@ -1,6 +1,6 @@
 // A member's card: the pop-up behind a name on the Members and Deceased screens,
 // and behind Profile on the main menu. It opens as everyone sees it; Edit turns it into a form.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { api, supabase } from '../lib/supabase';
 import { TAGS, isFallen, isForgemaster, isOfficer } from '../lib/roles';
@@ -11,6 +11,7 @@ import { AvailabilityEditor, AvailabilityStrip } from './Availability';
 import { MAX_LEVEL, MAX_MASTERIES, SKILL, SKILLS, cleanMasteries, type Mastery } from '../lib/masteries';
 import { cleanWeek, deviceZone, hoursFree } from '../lib/availability';
 import { ChangePassword } from '../screens/Account';
+import { FireBurstButton } from './FireBurst';
 
 export interface Presence { configured: boolean; ok?: boolean; reason?: string; server?: string; members: { name: string; status: string; game: string | null }[] }
 export type Status = 'realm' | 'discord' | 'offline' | 'unknown';
@@ -90,27 +91,10 @@ function Fallen({ member }: { member: Profile }) {
   );
 }
 
-/** Pay Respect: a green pair of praying hands and a fire rise from the button and are gone in a moment.
+/** Pay Respect: green praying hands rise with a fire behind them and small flames flying out, and are gone in a moment.
  *  Nothing is saved; it is a gesture, and it can be made as often as it is meant. */
 function PayRespect({ name }: { name: string }) {
-  const [bursts, setBursts] = useState<number[]>([]);
-  const next = useRef(0); const timers = useRef<number[]>([]);
-  useEffect(() => () => { timers.current.forEach((t) => window.clearTimeout(t)); }, []);
-  const pay = () => {
-    const id = ++next.current;
-    setBursts((b) => [...b.slice(-5), id]);
-    // gone as soon as it has faded, whether or not the browser was drawing at the time
-    timers.current.push(window.setTimeout(() => setBursts((b) => b.filter((x) => x !== id)), 1350));
-  };
-  return (
-    <span className="respect">
-      <button type="button" className="btn" onClick={pay}>Pay Respect</button>
-      {bursts.map((id) => (
-        <span key={id} className="respect__burst" aria-hidden="true"><span className="respect__pray">🙏</span><span className="respect__fire">🔥</span></span>
-      ))}
-      <span className="sr" role="status">{bursts.length ? `You pay your respects to ${name}.` : ''}</span>
-    </span>
-  );
+  return <FireBurstButton label="Pay Respect" said={`You pay your respects to ${name}.`} />;
 }
 
 /** Choose up to three masteries and a level for each. The tag beside each row is how it will look. */

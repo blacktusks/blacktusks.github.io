@@ -19,6 +19,8 @@ export default defineConfig({
         short_name: 'Black Tusks',
         description: 'Companion for the Black Tusk clan of Largashbur on Daedric Online.',
         display: 'standalone',
+        // phones open the installed app upright; Android keeps it there (computers ignore this)
+        orientation: 'portrait',
         background_color: '#000000',
         theme_color: '#000000',
         start_url: '.',
@@ -30,7 +32,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,woff2}', 'img/*', 'icons/*'],
+        // The game data rides with the app itself: it is fetched whole when a build is installed, so an open
+        // app never runs on half a file. Data addresses carry ?v=<build>, which only exists to beat browser caches.
+        globPatterns: ['**/*.{js,css,html,woff2}', 'img/*', 'icons/*', 'data/*.json'],
+        ignoreURLParametersMatching: [/^v$/, /^utm_/, /^fbclid$/],
         navigateFallback: 'index.html',
         runtimeCaching: [
           { urlPattern: /\/map\/.*\.(webp|json)$/, handler: 'CacheFirst', options: { cacheName: 'map-tiles', expiration: { maxEntries: 1400 } } },

@@ -399,25 +399,152 @@
 }
 /* the passage of honor reads as something spoken over them */
 .fallen__honor { padding: 2px 0 2px 14px; border-left: 2px solid var(--ember-hot); font-style: italic; font-size: 19px; line-height: 1.55; color: #fff; }
-/* Pay Respect: green praying hands and a fire rise from the button and are gone in a moment. */
-.respect { position: relative; display: inline-flex; }
-.respect__burst {
-  position: absolute; left: 50%; bottom: calc(100% + 4px); display: flex; gap: 6px; font-size: 34px; line-height: 1; white-space: nowrap; pointer-events: none;
-  transform: translateX(-50%); animation: respect-rise 1.25s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+/* Pay Respect and Praise Malacath (FireBurst.tsx): green praying hands rise from the button with a fire flaring
+   behind them, and small flames fly out all round, each turning slowly, before all of it fades. */
+.burstbtn { position: relative; display: inline-flex; }
+.burst { position: absolute; left: 50%; bottom: calc(100% + 26px); width: 0; height: 0; pointer-events: none; z-index: 3; }
+.burst > span { position: absolute; left: 0; top: 0; line-height: 1; white-space: nowrap; will-change: transform, opacity; }
+.burst__fire { font-size: 58px; z-index: 0; animation: burst-fire 1.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
+.burst__spark { font-size: calc(30px * var(--s, 0.6)); z-index: 1; opacity: 0; animation: burst-spark 1.8s cubic-bezier(0.15, 0.6, 0.35, 1) forwards; }
+.burst__hands { font-size: 40px; z-index: 2; animation: burst-hands 1.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  /* the hands are an orc's: the emoji's own colour is turned green, its shading kept */
+  filter: sepia(1) saturate(6) hue-rotate(62deg) brightness(0.92); }
+@keyframes burst-hands {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.5); }
+  16% { opacity: 1; transform: translate(-50%, -58%) scale(1.12); }
+  55% { opacity: 1; transform: translate(-50%, -72%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -100%) scale(0.96); }
 }
-/* the hands are an orc's: the emoji's own colour is turned green, its shading kept */
-.respect__pray { filter: sepia(1) saturate(6) hue-rotate(62deg) brightness(0.92); }
-@keyframes respect-rise {
-  0% { opacity: 0; transform: translate(-50%, 12px) scale(0.55); }
-  16% { opacity: 1; transform: translate(-50%, -4px) scale(1.1); }
-  50% { opacity: 1; transform: translate(-50%, -16px) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -40px) scale(0.96); }
+@keyframes burst-fire {
+  0% { opacity: 0; transform: translate(-50%, -38%) scale(0.35); }
+  18% { opacity: 0.95; transform: translate(-50%, -62%) scale(1.25); }
+  50% { opacity: 0.85; transform: translate(-50%, -70%) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -96%) scale(1.3); }
 }
-@keyframes respect-fade { 0% { opacity: 0; } 20%, 55% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .respect__burst { animation: respect-fade 1.1s ease forwards; } }
+@keyframes burst-spark {
+  0% { opacity: 0; transform: translate(-50%, -60%) rotate(var(--r0)) scale(0.4); }
+  14% { opacity: 1; }
+  70% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-60% + var(--dy))) rotate(calc(var(--r0) + var(--r1))) scale(1); }
+}
+@keyframes burst-fade { 0% { opacity: 0; } 20%, 55% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .burst__fire, .burst__hands { animation: burst-fade 1.4s ease forwards; transform: translate(-50%, -70%); }
+  .burst__spark { display: none; }
+}
 /* date of passing on a card and in its form */
 .fallen__date { margin: 0; min-height: 1.35em; font: 400 20px/1.35 var(--ui); letter-spacing: 0.08em; color: #fff; }
 .fallen__date.is-blank { max-width: 220px; border-bottom: 1px dashed var(--line); }
 .fallen__when { gap: 8px 18px; }
 .fallen__when .input { width: auto; min-width: 190px; color-scheme: dark; }
 .fallen__when .input:disabled { opacity: 0.45; }
+/* the card's recipes did not arrive: say so, with a way to try again, rather than guess "found" */
+.icard__missing { color: var(--bone-2); }
+.icard__missing .btn { margin-left: 6px; vertical-align: baseline; }
+/* expansion stages fold: the line with the stage's name opens and shuts it; its progress bar always shows */
+.stage__h { flex: 1; min-width: 0; }
+.stage__toggle {
+  width: 100%; display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; -webkit-tap-highlight-color: transparent;
+}
+.stage__toggle:focus-visible { outline: 2px solid var(--ember-hot); outline-offset: 4px; }
+.stage__chev { flex: none; width: 9px; height: 9px; border-right: 2px solid var(--bone-2); border-bottom: 2px solid var(--bone-2); transform: translateY(-2px) rotate(-45deg); transition: transform 0.18s; }
+.stage.is-open .stage__chev { transform: translateY(-3px) rotate(45deg); }
+.stage.is-shut .stagebar { border-bottom: 0; }
+.stage.is-open > .panel__body { animation: fade 0.16s ease; }
+@media (prefers-reduced-motion: reduce) { .stage__chev { transition: none; } .stage.is-open > .panel__body { animation: none; } }
+
+/* ── the Code of Mauloch: Malacath's shrine ── */
+/* One screen, pinned like the main menu: title, the way to the Tenets, the statue in its fog, Praise. */
+.shrine {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 1; overflow: hidden; display: flex; flex-direction: column;
+  background: radial-gradient(95% 62% at 50% 72%, #22150e 0%, #0d0907 52%, #040303 100%), #000;
+}
+.shrine__head { position: relative; z-index: 6; padding: calc(var(--safe-t) + clamp(12px, 2.6vh, 28px)) var(--pad) 0; text-align: center; }
+.shrine__nav { position: relative; z-index: 6; display: flex; justify-content: center; padding: clamp(10px, 2.2vh, 22px) var(--pad) 0; }
+.shrine__btn {
+  appearance: none; position: relative; min-height: 48px; padding: 8px 30px 9px; border: 1px solid rgba(255, 146, 72, 0.55); cursor: pointer;
+  background: linear-gradient(180deg, rgba(42, 21, 12, 0.88), rgba(14, 8, 6, 0.88)); color: #ffe3cf;
+  font: 400 clamp(17px, 2.4vh, 21px)/1.2 var(--ui); letter-spacing: 0.18em; text-transform: uppercase; text-shadow: 0 1px 6px #000;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 18px rgba(224, 82, 44, 0.18), inset 0 0 14px rgba(224, 82, 44, 0.12);
+  transition: border-color 0.15s, box-shadow 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent;
+}
+/* a small ember diamond at each end */
+.shrine__btn::before, .shrine__btn::after { content: ''; position: absolute; top: 50%; width: 6px; height: 6px; background: var(--ember-hot); box-shadow: 0 0 8px var(--ember); transform: translateY(-50%) rotate(45deg); }
+.shrine__btn::before { left: -4px; } .shrine__btn::after { right: -4px; }
+.shrine__btn:hover, .shrine__btn:focus-visible {
+  color: #fff; border-color: var(--ember-hot); outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 26px rgba(255, 146, 72, 0.38), inset 0 0 16px rgba(255, 146, 72, 0.2);
+}
+.shrine__btn:active { transform: translateY(1px); }
+.shrine__btn--praise { min-height: 54px; padding: 10px 38px 11px; font-size: clamp(18px, 2.7vh, 23px); }
+.shrine__stage { position: relative; z-index: 2; flex: 1 1 0; min-height: 0; margin-top: clamp(4px, 1.2vh, 14px); }
+.shrine__statue {
+  position: absolute; left: 0; top: 0; z-index: 3; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%;
+  user-select: none; -webkit-user-drag: none; pointer-events: none; filter: drop-shadow(0 0 24px rgba(255, 120, 50, 0.1));
+}
+/* On an upright phone the screen's width is what holds him back: the far ends of the stone may run just off its sides. */
+@media (max-aspect-ratio: 3/4) { .shrine__statue { left: -5%; width: 110%; } }
+/* Fog: a seamless strip that slides forever, two banks behind the statue and one lying over the foot of the stone. */
+.shrine__fog { position: absolute; left: 0; right: 0; overflow: hidden; pointer-events: none; mix-blend-mode: screen; }
+.shrine__fog i { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% + 1024px); background: url('/img/fog.webp') repeat-x 0 50% / 1024px 100%; animation: drift-fog 110s linear infinite; will-change: transform; }
+.shrine__fog--far { top: 2%; height: 72%; z-index: 1; opacity: 0.26; }
+.shrine__fog--mid { bottom: 4%; height: 54%; z-index: 2; opacity: 0.3; }
+.shrine__fog--mid i { animation-duration: 64s; animation-direction: reverse; }
+.shrine__fog--front { bottom: -5%; height: 30%; z-index: 4; opacity: 0.5; }
+.shrine__fog--front i { animation-duration: 48s; }
+@keyframes drift-fog { to { transform: translate3d(-1024px, 0, 0); } }
+/* a pale presence behind him, breathing slowly, and the warm light of the fire below the stone */
+.shrine__halo {
+  position: absolute; left: 50%; top: 0; z-index: 1; width: min(92%, 640px); aspect-ratio: 1; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255, 228, 186, 0.15), rgba(255, 186, 120, 0.06) 55%, transparent 74%); animation: halo-breathe 7s ease-in-out infinite;
+}
+@keyframes halo-breathe { 50% { opacity: 0.6; transform: translateX(-50%) scale(0.96); } }
+.shrine__glow {
+  position: absolute; left: 50%; bottom: -6%; z-index: 2; width: min(130%, 980px); height: 52%; transform: translateX(-50%); pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(50% 50% at 50% 78%, rgba(255, 118, 48, 0.34), rgba(255, 96, 36, 0.1) 56%, transparent 76%); animation: glow-flicker 3.1s ease-in-out infinite;
+}
+@keyframes glow-flicker { 0%, 100% { opacity: 1; } 18% { opacity: 0.86; } 34% { opacity: 0.97; } 52% { opacity: 0.82; } 70% { opacity: 0.95; } }
+.embers { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.shrine__embers { z-index: 5; mix-blend-mode: screen; }
+.shrine__praise { position: relative; z-index: 7; display: flex; justify-content: center; padding: clamp(8px, 1.6vh, 16px) var(--pad) 0; }
+.shrine__bar { position: relative; z-index: 7; background: none; }
+
+/* His words: up out of the fog for a moment, ten seconds held, then back into it. Glowing, with a light passing over them. */
+.oracle { position: fixed; z-index: 20; left: 50%; top: 46%; width: min(88vw, 640px); transform: translate(-50%, -50%); pointer-events: none; text-align: center; }
+.oracle__fog {
+  position: absolute; left: -22%; right: -22%; top: -70%; bottom: -70%; opacity: 0; mix-blend-mode: screen;
+  background: url('/img/fog.webp') 50% 50% / 150% 100% no-repeat;
+  -webkit-mask-image: radial-gradient(closest-side, #000 25%, transparent 100%); mask-image: radial-gradient(closest-side, #000 25%, transparent 100%);
+  animation: oracle-fog 14s ease forwards;
+}
+.oracle__in { position: relative; animation: oracle-in 14s ease forwards; }
+.oracle__in::before { content: ''; position: absolute; inset: -46% -10%; z-index: -1; background: radial-gradient(closest-side, rgba(5, 3, 2, 0.72), rgba(5, 3, 2, 0.42) 55%, transparent); }
+.oracle__text {
+  font: italic 500 clamp(21px, 4.6vw, 30px)/1.45 var(--book); color: #fff4df; text-wrap: balance;
+  text-shadow: 0 0 10px rgba(255, 196, 120, 0.75), 0 0 26px rgba(255, 140, 60, 0.45), 0 1px 2px #000;
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .oracle__text {
+    background: linear-gradient(105deg, #ffe6c2 0%, #ffe6c2 42%, #fffdf7 50%, #ffe6c2 58%, #ffe6c2 100%) 100% 0 / 280% 100% no-repeat;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; text-shadow: none;
+    filter: drop-shadow(0 0 7px rgba(255, 200, 128, 0.85)) drop-shadow(0 0 20px rgba(255, 140, 60, 0.5)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9));
+    animation: oracle-shine 3.4s ease-in-out 1.4s infinite;
+  }
+}
+@keyframes oracle-in {
+  0% { opacity: 0; filter: blur(14px); transform: translateY(14px) scale(1.06); }
+  11.4% { opacity: 1; filter: blur(0); transform: none; }
+  82.9% { opacity: 1; filter: blur(0); transform: none; }
+  100% { opacity: 0; filter: blur(12px); transform: translateY(-16px) scale(1.04); }
+}
+@keyframes oracle-fog {
+  0% { opacity: 0; transform: scale(0.85); } 7% { opacity: 0.72; transform: scale(1); } 20% { opacity: 0.2; }
+  80% { opacity: 0.2; transform: scale(1.04); } 92% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.2); }
+}
+@keyframes oracle-shine { 0%, 30% { background-position: 100% 0; } 75%, 100% { background-position: 0% 0; } }
+@keyframes oracle-plain { 0% { opacity: 0; } 11.4%, 82.9% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shrine__fog i, .shrine__halo, .shrine__glow { animation: none; }
+  .oracle__in { animation-name: oracle-plain; } .oracle__fog { display: none; } .oracle__text { animation: none; }
+}

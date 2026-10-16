@@ -19,8 +19,10 @@ export function useTitle(title: string) {
 }
 
 /** Frame for every screen behind the main menu. */
-export function Page({ title, sub, children, bar, width }: {
+export function Page({ title, sub, children, bar, width, back = '/' }: {
   title: string; sub?: ReactNode; children: ReactNode; bar?: ReactNode; width?: 'wide' | 'full';
+  /** Where Back goes: the main menu, unless the screen sits under another one. */
+  back?: string;
 }) {
   useTitle(title);
   useEffect(() => { window.scrollTo(0, 0); }, [title]);
@@ -34,7 +36,7 @@ export function Page({ title, sub, children, bar, width }: {
         </header>
         <main className={`page__body ${width ? `page__body--${width}` : ''}`}>{children}</main>
         <footer className="page__bar">
-          <Link to="/" className="btn back">Back</Link>
+          <Link to={back} className="btn back">Back</Link>
           <span className="spacer" />
           {bar}
         </footer>

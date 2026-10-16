@@ -170,6 +170,7 @@ export default function Ledger() {
   const { profile } = useAuth(); const herald = isHerald(profile!.tags);
   const [params, setParams] = useSearchParams();
   const [base, setBase] = useState<Item[] | null>(null); const [details, setDetails] = useState<Record<string, Detail> | null>(null);
+  const [detailsFailed, setDetailsFailed] = useState(false);
   const [entries, setEntries] = useState<LedgerEntry[]>([]); const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
   const [cat, setCat] = useState<CatId>('all'); const [search, setSearch] = useState(''); const [type, setType] = useState(''); const [source, setSource] = useState('');
   const [pricedOnly, setPricedOnly] = useState(false); const [showHidden, setShowHidden] = useState(false);
@@ -189,11 +190,20 @@ export default function Ledger() {
     const hidden = await supabase.rpc('hidden_item_keys');
     if (!hidden.error) setHiddenKeys(new Set((hidden.data as string[]) ?? []));
   }, []);
+  // The recipes come in a file of their own. Until it is in, no card may call an item "found".
+  const fetchDetails = useCallback(() => { setDetailsFailed(false); loadDetails().then(setDetails).catch(() => setDetailsFailed(true)); }, []);
   useEffect(() => {
     loadItems().then(setBase).catch(() => setError('Could not load the item list. Check your connection and try again.'));
-    loadDetails().then(setDetails).catch(() => undefined);
+    fetchDetails();
     void loadEntries();
-  }, [loadEntries]);
+  }, [loadEntries, fetchDetails]);
+  // An app left open in the background may have missed it: try again when it comes back to the front.
+  useEffect(() => {
+    if (!detailsFailed) return;
+    const back = () => { if (document.visibilityState === 'visible') fetchDetails(); };
+    document.addEventListener('visibilitychange', back); window.addEventListener('online', back);
+    return () => { document.removeEventListener('visibilitychange', back); window.removeEventListener('online', back); };
+  }, [detailsFailed, fetchDetails]);
   useEffect(() => {
     const el = listRef.current; if (!el) return;
     const ro = new ResizeObserver(() => setViewH(el.clientHeight)); ro.observe(el); setViewH(el.clientHeight);
@@ -289,7 +299,7 @@ export default function Ledger() {
   };
   const cur = current ? entry.get(current.key) : undefined;
   const det = current ? details?.[current.key] : undefined;
-  const acq = current ? autoAcquire(current, det) : null;
+  const acq = current && details ? autoAcquire(current, det) : null;       // null until the recipes are in
   const toggleFav = (key: string) => setFavs((f) => { const n = new Set(f); n.has(key) ? n.delete(key) : n.add(key); try { localStorage.setItem(FAV_KEY, JSON.stringify([...n])); } catch { /* private mode */ } return n; });
   const sortBy = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === 'name' || key === 'type' ? 1 : -1 }));
   const Th = ({ k, children, className = '' }: { k: SortKey; children: string; className?: string }) => (
@@ -378,8 +388,10 @@ export default function Ledger() {
                 <p className="icard__type">{current.type}{current.cls ? `, ${current.cls}` : ''} from {current.src}{cur?.hidden ? '. Hidden from members' : ''}</p>
                 <h3 className="icard__h">Used for</h3>
                 <p>{cur?.uses || autoUses(current, det) || 'Nothing recorded yet.'}</p>
-                <h3 className="icard__h">How to get it <span className={`stamp2 ${cur?.acquire ? '' : acq?.made ? 'is-made' : ''}`}>{cur?.acquire ? 'Clan note' : acq?.made ? 'Made' : 'Found'}</span></h3>
-                <p>{cur?.acquire || acq?.text}</p>
+                <h3 className="icard__h">How to get it {(cur?.acquire || acq) && <span className={`stamp2 ${cur?.acquire ? '' : acq?.made ? 'is-made' : ''}`}>{cur?.acquire ? 'Clan note' : acq?.made ? 'Made' : 'Found'}</span>}</h3>
+                {cur?.acquire || acq ? <p>{cur?.acquire || acq?.text}</p>
+                  : detailsFailed ? <p className="icard__missing">The forge records did not load, so how this item is made is not shown. <button className="btn btn--small" onClick={fetchDetails}>Try again</button></p>
+                  : <p className="muted">Reading the forge records…</p>}
                 <div className="row" style={{ marginTop: 14 }}>
                   <button className="btn btn--small" aria-pressed={favs.has(current.key)} onClick={() => toggleFav(current.key)}>{favs.has(current.key) ? '★ Favorite' : '☆ Favorite'}</button>
                   {herald && <button className="btn btn--small btn--go" onClick={() => setEditing(true)}>Edit</button>}

@@ -37,8 +37,16 @@ for (const [label, [w, h], [sw, sh], mode, want] of CASES) {
     splash: document.getElementById('splash')?.getBoundingClientRect().height ?? null }));
   if (first.app !== (mode !== 'tab')) fail(label, `is-app is ${first.app}`);
   if (first.splash != null && Math.abs(first.splash - want) > 1) fail(label, `loading screen is ${first.splash}px tall, wanted ${want}`);
+  // a phone on its side is covered (it asks to be turned upright): sign in upright, then turn it back
+  const turned = w > h && h <= 500 && mode !== 'tab';
+  if (turned) await page.setViewportSize({ width: h, height: w });
   await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForSelector('.menu__nav'); await page.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 20000 });
+  if (turned) {
+    await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(400);
+    const covered = await page.evaluate(() => getComputedStyle(document.querySelector('.upright')).display !== 'none');
+    if (!covered) fail(label, 'a phone on its side is not asked to turn upright');
+  }
   const seen = [];
   for (const [route, layers] of Object.entries(LAYERS)) {
     await page.evaluate((r) => { location.hash = r; }, route);

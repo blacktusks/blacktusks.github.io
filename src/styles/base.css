@@ -258,3 +258,19 @@ html.has-modal, html.has-modal body { overflow: hidden; }
 .oath__seal { width: 86px; height: 86px; margin: 28px auto 0; border-radius: 50%; object-fit: cover; opacity: 0.9; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(224, 82, 44, 0.35); }
 ::placeholder { color: var(--bone-3); font-style: italic; opacity: 1; }
 .lbar__search::placeholder { font-style: normal; }
+
+/* ── a phone on its side: asked to turn upright (see TurnUpright.tsx) ── */
+.upright { display: none; }
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .upright {
+    position: fixed; inset: 0; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); text-align: center;
+    background: radial-gradient(120% 90% at 50% 45%, #1a1310 0%, #070505 70%), #000; color: var(--bone);
+  }
+}
+.upright__phone { position: relative; width: 34px; height: 58px; margin-bottom: 10px; border: 2px solid var(--bone-2); border-radius: 7px; animation: upright-turn 2.4s ease-in-out infinite; }
+.upright__phone i { position: absolute; left: 50%; bottom: 4px; width: 10px; height: 2px; margin-left: -5px; border-radius: 2px; background: var(--bone-3); }
+.upright__title { font: 300 clamp(20px, 6vh, 30px)/1.15 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: #fff; text-shadow: 0 0 18px rgba(255, 146, 72, 0.35); }
+.upright__note { font: italic 400 17px/1.4 var(--book); color: var(--bone-2); }
+@keyframes upright-turn { 0%, 30% { transform: rotate(-90deg); } 55%, 100% { transform: rotate(0deg); } }
+@media (prefers-reduced-motion: reduce) { .upright__phone { animation: none; } }

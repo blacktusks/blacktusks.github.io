@@ -6,11 +6,12 @@ import { onUpdateReady, reloadIntoUpdate } from './lib/update';
 import { splashPass } from './lib/splash';
 import MainMenu from './screens/MainMenu';
 import SignIn from './screens/SignIn';
-import CodeOfMauloch from './screens/CodeOfMauloch';
+import CodeOfMauloch, { SevenTenets } from './screens/CodeOfMauloch';
 import Oath from './screens/Oath';
 import { ChangePassword } from './screens/Account';
 import { Scene } from './components/Scene';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TurnUpright } from './components/TurnUpright';
 
 const NoticeBoard = lazy(() => import('./screens/NoticeBoard'));
 const Members = lazy(() => import('./screens/Members'));
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/" element={<MainMenu />} />
         <Route path="/sign-in" element={profile ? <Navigate to="/" replace /> : <SignIn />} />
         <Route path="/code" element={<CodeOfMauloch />} />
+        <Route path="/code/tenets" element={<SevenTenets />} />
         <Route path="/notices" element={<MembersOnly><NoticeBoard /></MembersOnly>} />
         <Route path="/oath" element={<MembersOnly><Oath /></MembersOnly>} />
         <Route path="/members" element={<MembersOnly><Members /></MembersOnly>} />
@@ -81,6 +83,7 @@ export default function App() {
       {profile?.must_change_password && <ChangePassword forced onDone={reload} />}
       <FirstScreenDrawn />
       <UpdateBar />
+      <TurnUpright />
     </Suspense>
     </ErrorBoundary>
   );

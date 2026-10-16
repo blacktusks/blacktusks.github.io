@@ -15,23 +15,37 @@ export interface Detail {
   bd?: [string, number][]; us?: string[]; usn?: number; hv?: string[];
 }
 
-let itemsPromise: Promise<Item[]> | null = null;
-export function loadItems(): Promise<Item[]> {
-  itemsPromise ??= fetch(dataUrl('items.json')).then((r) => r.json()).then((d: { sources: string[]; pics?: string[]; picv?: string[]; items: any[][] }) =>
-    d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags, pic]) => ({
-      key, name, cat, type, cls, value, weight, stat, src: d.sources[src], enchanted: !!(flags & 2), lower: name.toLowerCase(),
-      pic: pic != null && pic >= 0 && d.pics?.[pic] ? `${d.pics[pic]}.webp${d.picv?.[pic] ? `?v=${d.picv[pic]}` : ''}` : undefined,
-    })));
-  return itemsPromise;
+/**
+ * Fetches one of the game data files. A phone on a weak signal can drop a request or hand back half a file,
+ * so each file is tried up to three times, the later tries straight from the network, and a failure is never
+ * remembered: the next screen that asks simply tries again.
+ */
+async function fetchData<T>(file: string, tries = 3): Promise<T> {
+  let last: unknown = new Error(`${file} could not be loaded`);
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(dataUrl(file), i ? { cache: 'reload' } : undefined);
+      if (!r.ok) throw new Error(`${file}: ${r.status}`);
+      return (await r.json()) as T;
+    } catch (e) { last = e; if (i < tries - 1) await new Promise((ok) => setTimeout(ok, 700 * (i + 1))); }
+  }
+  throw last;
 }
+const once = <T,>(load: () => Promise<T>) => {
+  let p: Promise<T> | null = null;
+  return () => (p ??= load().catch((e) => { p = null; throw e; }));
+};
+
+export const loadItems = once(() => fetchData<{ sources: string[]; pics?: string[]; picv?: string[]; items: any[][] }>('items.json').then((d) =>
+  d.items.map(([key, name, cat, type, cls, value, weight, stat, src, flags, pic]): Item => ({
+    key, name, cat, type, cls, value, weight, stat, src: d.sources[src], enchanted: !!(flags & 2), lower: name.toLowerCase(),
+    pic: pic != null && pic >= 0 && d.pics?.[pic] ? `${d.pics[pic]}.webp${d.picv?.[pic] ? `?v=${d.picv[pic]}` : ''}` : undefined,
+  }))));
 /** Address of an item's rendered picture. The stamp in it changes when the picture does, so an old copy is never shown. */
 export const itemPictureUrl = (pic: string) => `./items/${pic}`;
 
-let detailsPromise: Promise<Record<string, Detail>> | null = null;
-export function loadDetails(): Promise<Record<string, Detail>> {
-  detailsPromise ??= fetch(dataUrl('details.json')).then((r) => r.json());
-  return detailsPromise;
-}
+/** Recipes, smelting, effects: what turns "found" into "made". Without it the ledger must not guess. */
+export const loadDetails = once(() => fetchData<Record<string, Detail>>('details.json'));
 
 export function customItems(entries: LedgerEntry[]): Item[] {
   return entries.filter((e) => e.custom && typeof e.custom.name === 'string' && e.custom.name).map((e) => {
