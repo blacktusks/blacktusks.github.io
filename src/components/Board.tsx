@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { PROFILE_COLUMNS, type Post, type Profile, type Visibility } from '../lib/types';
+import type { Clan } from '../lib/clan';
+import { sfx } from '../lib/sound';
 import { Confirm, Modal, ago } from './ui';
 
 interface BoardProps {
   table: 'announcements' | 'mine_deals';
+  /** Whose board or mine this is. */
+  clan: Clan;
   canWrite: boolean;
   withExpiry?: boolean;
   noun: string;                 // "notice", "deal"
@@ -25,8 +29,8 @@ function left(iso: string): string {
   return `Comes down in ${Math.round(s / 86400)} days`;
 }
 
-function Editor({ table, post, withExpiry, noun, members, onClose, onSaved }: {
-  table: BoardProps['table']; post: Post | null; withExpiry?: boolean; noun: string; members: Profile[]; onClose: () => void; onSaved: () => void;
+function Editor({ table, clan, post, withExpiry, noun, members, onClose, onSaved }: {
+  table: BoardProps['table']; clan: Clan; post: Post | null; withExpiry?: boolean; noun: string; members: Profile[]; onClose: () => void; onSaved: () => void;
 }) {
   const { profile } = useAuth();
   const mine = !post || post.author_id === profile!.id;
@@ -43,11 +47,11 @@ function Editor({ table, post, withExpiry, noun, members, onClose, onSaved }: {
     const row: Record<string, unknown> = { title: title.trim(), body, visibility, audience: visibility === 'specific' ? audience : [] };
     if (withExpiry) row.expires_at = expiry === '0' ? null : expiry === 'custom' ? new Date(custom).toISOString() : new Date(Date.now() + Number(expiry) * 86400000).toISOString();
     setBusy(true);
-    const q = post ? supabase.from(table).update(row).eq('id', post.id).select() : supabase.from(table).insert(row).select();
+    const q = post ? supabase.from(table).update(row).eq('id', post.id).select() : supabase.from(table).insert({ ...row, clan }).select();
     const { data, error } = await q;
     setBusy(false);
-    if (error || !data?.length) return setError(error?.message ?? `That ${noun} could not be saved. It may have been removed.`);
-    onSaved(); onClose();
+    if (error || !data?.length) { sfx('denied'); return setError(error?.message ?? `That ${noun} could not be saved. It may have been removed.`); }
+    sfx('save'); onSaved(); onClose();
   };
   const toggle = (id: string) => setAudience((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
 
@@ -96,18 +100,18 @@ function Editor({ table, post, withExpiry, noun, members, onClose, onSaved }: {
   );
 }
 
-/** A board of posts with per-post visibility. Used by the Notice Board and the Mine of the Black Tusks. */
-export function Board({ table, canWrite, withExpiry, noun, empty, composing, onComposeDone }: BoardProps) {
+/** A board of posts with per-post visibility. Used by each clan's Notice Board and mine. */
+export function Board({ table, clan, canWrite, withExpiry, noun, empty, composing, onComposeDone }: BoardProps) {
   const { profile } = useAuth(); const me = profile!;
   const [posts, setPosts] = useState<Post[] | null>(null); const [members, setMembers] = useState<Profile[]>([]);
   const [editing, setEditing] = useState<Post | null>(null); const [removing, setRemoving] = useState<Post | null>(null);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [p, m] = await Promise.all([supabase.from(table).select('*').order('created_at', { ascending: false }), supabase.from('profiles').select(PROFILE_COLUMNS)]);
+    const [p, m] = await Promise.all([supabase.from(table).select('*').eq('clan', clan).order('created_at', { ascending: false }), supabase.from('profiles').select(PROFILE_COLUMNS)]);
     if (p.error) return setError(`Could not load the ${noun}s. Check your connection and try again.`);
     setError(''); setPosts(p.data as Post[]); setMembers((m.data ?? []) as Profile[]);
-  }, [table, noun]);
+  }, [table, noun, clan]);
   useEffect(() => { void load(); }, [load]);
   const name = useMemo(() => Object.fromEntries(members.map((m) => [m.id, m.display_name])), [members]);
 
@@ -149,7 +153,7 @@ export function Board({ table, canWrite, withExpiry, noun, empty, composing, onC
           );
         })}
       </div>
-      {(composing || editing) && <Editor table={table} post={editing} withExpiry={withExpiry} noun={noun} members={members}
+      {(composing || editing) && <Editor table={table} clan={clan} post={editing} withExpiry={withExpiry} noun={noun} members={members}
         onClose={() => { setEditing(null); onComposeDone(); }} onSaved={load} />}
       {removing && <Confirm title={`Remove this ${noun}`} action="Remove" danger busy={busy} onClose={() => setRemoving(null)} onConfirm={remove}>
         <p>“{removing.title}” will be taken off the board for everyone.</p>

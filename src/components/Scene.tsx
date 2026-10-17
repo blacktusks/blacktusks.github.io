@@ -1,20 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CLANS, useSide, type Clan } from '../lib/clan';
 
-// The stronghold image is 2400x1800; the campfire sits here in it.
-const IMG_W = 2400, IMG_H = 1800, FIRE_X = 0.5038, FIRE_Y = 0.5594;
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** Each clan's stronghold behind its home screen: the picture's size, the point the layout keeps in view
+ *  (Largashbur's campfire; at Narzulbur, the shrine stones before the longhouse), and where that point goes. */
+interface Backdrop { w: number; h: number; fx: number; fy: number; dim: string; sharp: string; portrait: [number, number]; land: [number, number] }
+const BACKDROP: Record<Clan, Backdrop> = {
+  black_tusks: { w: 2400, h: 1800, fx: 0.5038, fy: 0.5594, dim: './img/largashbur-dim.webp', sharp: './img/largashbur.webp', portrait: [0.3, 0.6], land: [0.56, 0.6] },
+  scorned: { w: 1920, h: 974, fx: 0.405, fy: 0.6, dim: './img/narzulbur-dim.webp', sharp: './img/narzulbur.webp', portrait: [0.42, 0.6], land: [0.56, 0.6] },
+};
 
 interface Fit { scale: number; left: number; top: number; fx: number; fy: number; portrait: boolean }
 
-/** Cover-fit the background and slide it so the campfire lands where the layout wants it. */
-function fit(w: number, h: number): Fit {
+/** Cover-fit a backdrop and slide it so its focal point (the campfire at Largashbur) lands where the layout wants it. */
+function fit(w: number, h: number, b: Backdrop = BACKDROP.black_tusks): Fit {
   const portrait = h > w * 1.05;
-  const scale = Math.max(w / IMG_W, h / IMG_H) * (portrait ? 1.0 : 1.04);
-  const iw = IMG_W * scale, ih = IMG_H * scale;
-  const wantX = portrait ? 0.3 : 0.56, wantY = portrait ? 0.6 : 0.6;
-  const left = Math.min(0, Math.max(w - iw, wantX * w - FIRE_X * iw));
-  const top = Math.min(0, Math.max(h - ih, wantY * h - FIRE_Y * ih));
-  return { scale, left, top, fx: left + FIRE_X * iw, fy: top + FIRE_Y * ih, portrait };
+  const scale = Math.max(w / b.w, h / b.h) * (portrait ? 1.0 : 1.04);
+  const iw = b.w * scale, ih = b.h * scale;
+  const [wantX, wantY] = portrait ? b.portrait : b.land;
+  const left = Math.min(0, Math.max(w - iw, wantX * w - b.fx * iw));
+  const top = Math.min(0, Math.max(h - ih, wantY * h - b.fy * ih));
+  return { scale, left, top, fx: left + b.fx * iw, fy: top + b.fy * ih, portrait };
 }
 
 interface Spark { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; seed: number; kind: 0 | 1 | 2 | 3 }
@@ -63,8 +70,10 @@ void main(){
  * the ground with an overlay blend, which tints what is already there instead
  * of laying orange fog over it.
  */
-function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, emberRef: React.RefObject<HTMLCanvasElement>, f: Fit) {
+function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.RefObject<HTMLCanvasElement>, lightRef: React.RefObject<HTMLDivElement>, emberRef: React.RefObject<HTMLCanvasElement>, f: Fit, fireShare = 0.5) {
   const fitRef = useRef(f); fitRef.current = f;
+  // At Largashbur half the drifting embers leave the fire; Narzulbur has no fire, so they all rise from the ground.
+  const shareRef = useRef(fireShare); shareRef.current = fireShare;
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -149,7 +158,7 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
         owedEmber += dt * 3.5;
         while (owedEmber >= 1) {
           owedEmber -= 1;
-          const fromFire = rnd() < 0.5;
+          const fromFire = rnd() < shareRef.current;
           parts.push({ x: fromFire ? fx + (rnd() - 0.5) * 34 * px : rnd() * W, y: fromFire ? fy - (40 + rnd() * 60) * px : H * (0.5 + rnd() * 0.55),
             vx: (rnd() - 0.35) * 10 * u, vy: -(fromFire ? 20 + rnd() * 22 : 9 + rnd() * 16) * u,
             life: 0, max: 7 + rnd() * 6, size: (0.75 + rnd() * 0.85) * u, seed: rnd() * 6.283, kind: 3 });
@@ -203,7 +212,7 @@ function useFire(canvasRef: React.RefObject<HTMLCanvasElement>, flameRef: React.
 
 const VERT = `attribute vec2 p; varying vec2 v; void main(){ v = p * 0.5 + 0.5; v.y = 1.0 - v.y; gl_Position = vec4(p, 0.0, 1.0); }`;
 const FRAG = `precision mediump float;
-uniform sampler2D tex, mask; uniform float t; varying vec2 v;
+uniform sampler2D tex, mask; uniform float t, warm; varying vec2 v;
 void main(){
   float w = texture2D(mask, v).r;
   float gust = 0.62 + 0.38 * sin(t * 0.31) * sin(t * 0.13 + 1.7);
@@ -214,15 +223,25 @@ void main(){
   float slope = cos(ph) * 0.62 + cos(ph * 1.9 + 1.3 + t * 0.55) * 0.53;
   c.rgb *= 1.0 + slope * 0.17 * w * gust;
   float fire = 0.94 + 0.06 * sin(t * 7.3) * sin(t * 3.1 + v.y * 4.0);
-  c.rgb *= mix(vec3(1.0), vec3(1.07, 0.97, 0.9) * fire, smoothstep(0.2, 1.0, v.x));
+  c.rgb *= mix(vec3(1.0), vec3(1.07, 0.97, 0.9) * fire, smoothstep(0.2, 1.0, v.x) * warm);   // the campfire's warmth, Largashbur only
   gl_FragColor = c;
 }`;
 
-/** The clan banner. The cloth is moved by a small shader; the frame holds still. */
-export function Banner({ className = '', onReady }: { className?: string; onReady?: () => void }) {
+/** Each clan's banner: the picture, the map of how freely each part of it moves (white cloth, black frame), and
+ *  whether the campfire's warmth falls on it. The Scorned flag hangs from its bar on the cold side of the app. */
+const ART: Record<Clan, { tex: string; mask: string; alt: string; warm: number }> = {
+  black_tusks: { tex: './img/banner.webp', mask: './img/banner_weight.png', alt: 'The Black Tusk banner', warm: 1 },
+  scorned: { tex: './img/banner_scorned.webp', mask: './img/banner_scorned_weight.png', alt: 'The Scorned flag', warm: 0 },
+};
+
+/** The clan banner. The cloth is moved by a small shader; the frame holds still. Both clans' banners share one
+ *  canvas: the shown one is drawn, the other is fetched in the background so a switch never waits. */
+export function Banner({ className = '', onReady, theme = 'black_tusks' }: { className?: string; onReady?: () => void; theme?: Clan }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
   const told = useRef(onReady); told.current = onReady;
+  const themeRef = useRef(theme); themeRef.current = theme;
+  const want = useRef<(c: Clan) => void>(() => undefined);
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return;
     const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -238,42 +257,61 @@ export function Banner({ className = '', onReady }: { className?: string; onRead
     const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
+    gl.uniform1i(gl.getUniformLocation(prog, 'tex'), 0); gl.uniform1i(gl.getUniformLocation(prog, 'mask'), 1);
+    const uT = gl.getUniformLocation(prog, 't'), uWarm = gl.getUniformLocation(prog, 'warm');
 
-    let ready = 0, raf = 0, dead = false;
-    const load = (src: string, unit: number, name: string) => {
-      const img = new Image();
-      img.onload = () => {
-        if (dead) return;
-        const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.uniform1i(gl.getUniformLocation(prog, name), unit);
-        if (++ready === 2) { canvas.classList.add('is-ready'); raf = requestAnimationFrame(draw); told.current?.(); }
-      };
-      img.onerror = () => setFailed(true);
-      img.src = src;
+    let raf = 0, dead = false, shown = false;
+    const sets: Partial<Record<Clan, { tex: WebGLTexture; mask: WebGLTexture }>> = {};
+    const asked = new Set<Clan>();
+    const upload = (img: HTMLImageElement) => {
+      const tex = gl.createTexture()!; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return tex;
     };
-    const uT = gl.getUniformLocation(prog, 't');
+    const fetchImg = (src: string) => new Promise<HTMLImageElement>((ok, bad) => { const img = new Image(); img.onload = () => ok(img); img.onerror = bad; img.src = src; });
+    const ensure = (c: Clan) => {
+      if (asked.has(c)) return; asked.add(c);
+      Promise.all([fetchImg(ART[c].tex), fetchImg(ART[c].mask)]).then(([a, b]) => {
+        if (dead) return;
+        sets[c] = { tex: upload(a), mask: upload(b) };
+        if (!shown && c === themeRef.current) {
+          shown = true; canvas.classList.add('is-ready'); raf = requestAnimationFrame(draw); told.current?.();
+          // the other clan's banner, quietly, for a switch later
+          window.setTimeout(() => { if (!dead) CLANS.forEach(ensure); }, 2500);
+        }
+      }, () => { if (!dead && c === themeRef.current && !shown) setFailed(true); });
+    };
     const still = reducedMotion();
     const draw = (now: number) => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const size = Math.min(1100, Math.round(canvas.clientWidth * dpr));
       if (size && canvas.width !== size) { canvas.width = canvas.height = size; gl.viewport(0, 0, size, size); }
-      gl.uniform1f(uT, still ? 2.0 : now / 1000);
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      const c = themeRef.current, set = sets[c];
+      if (set) {
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, set.tex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, set.mask);
+        gl.uniform1f(uT, still ? 2.0 : now / 1000); gl.uniform1f(uWarm, ART[c].warm);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
       if (!still) raf = requestAnimationFrame(draw);
     };
-    load('./img/banner.webp', 0, 'tex'); load('./img/banner_weight.png', 1, 'mask');
+    // With reduced motion the banner is drawn once per change instead of every frame.
+    want.current = (c: Clan) => { ensure(c); if (still && shown) { const wait = () => (sets[c] ? draw(0) : window.setTimeout(wait, 100)); wait(); } };
+    ensure(themeRef.current);
     return () => { dead = true; cancelAnimationFrame(raf); };
   }, []);
-  if (failed) return <img className={`banner ${className}`} src="./img/banner.webp" alt="The Black Tusk banner" onLoad={() => onReady?.()} onError={() => onReady?.()} />;
-  return <canvas ref={ref} className={`banner ${className}`} role="img" aria-label="The Black Tusk banner" />;
+  useEffect(() => { want.current(theme); }, [theme]);
+  if (failed) return <img className={`banner ${className}`} src={ART[theme].tex} alt={ART[theme].alt} onLoad={() => onReady?.()} onError={() => onReady?.()} />;
+  return <canvas ref={ref} className={`banner ${className}`} role="img" aria-label={ART[theme].alt} />;
 }
 
 /**
- * Largashbur with the fire burning. `quiet` drops the fire and dims it for inner screens.
+ * The stronghold behind the screens: Largashbur with its fire burning, or Narzulbur in the snow. `quiet` drops
+ * the fire and dims it for inner screens. `theme` picks the clan (by default, the side of the app that is
+ * showing); on the main menu a change of clan crossfades one stronghold into the other.
  *
  * First load: a tiny blurred copy of the picture shows at once, in exactly the
  * place the full picture will take. The full picture, the fire and its light
@@ -282,10 +320,14 @@ export function Banner({ className = '', onReady }: { className?: string; onRead
  * The size comes from the scene's own box, which is right on phones even while
  * the browser's bars are sliding in and out.
  */
-export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: () => void }) {
+export function Scene({ quiet = false, onReady, theme }: { quiet?: boolean; onReady?: () => void; theme?: Clan }) {
+  const side = useSide();
+  const clan = theme ?? side;
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(() => ({ w: window.innerWidth || document.documentElement.clientWidth, h: window.innerHeight || document.documentElement.clientHeight }));
-  const [sharp, setSharp] = useState(false);
+  const [sharp, setSharp] = useState<Partial<Record<Clan, boolean>>>({});
+  // Which strongholds have their full picture on the page: the one showing, and (a little later) the other.
+  const [fetched, setFetched] = useState<Set<Clan>>(() => new Set([clan]));
   const fire = useRef<HTMLCanvasElement>(null);
   const light = useRef<HTMLDivElement>(null);
   const flame = useRef<HTMLCanvasElement>(null);
@@ -304,25 +346,42 @@ export function Scene({ quiet = false, onReady }: { quiet?: boolean; onReady?: (
     return () => { ro?.disconnect(); events.forEach((e) => window.removeEventListener(e, measure)); window.visualViewport?.removeEventListener('resize', measure); };
   }, []);
   const told = useRef(onReady); told.current = onReady;
-  useEffect(() => { if (sharp) told.current?.(); }, [sharp]);
-  const f = fit(size.w, size.h);
-  useFire(fire, flame, light, embers, f);
-  const place = { width: IMG_W * f.scale, height: IMG_H * f.scale, transform: `translate3d(${f.left}px, ${f.top}px, 0)` };
+  const isSharp = !!sharp[clan];
+  useEffect(() => { if (isSharp) told.current?.(); }, [isSharp]);
+  useEffect(() => { setFetched((f) => (f.has(clan) ? f : new Set([...f, clan]))); }, [clan]);
+  // Once the first stronghold is in, the other is fetched quietly, so a switch fades rather than waits.
+  useEffect(() => {
+    if (quiet || !isSharp) return;
+    const t = window.setTimeout(() => setFetched(new Set(CLANS)), 2500);
+    return () => window.clearTimeout(t);
+  }, [quiet, isSharp]);
+  const fits = { black_tusks: fit(size.w, size.h, BACKDROP.black_tusks), scorned: fit(size.w, size.h, BACKDROP.scorned) };
+  const f = fits.black_tusks;
+  useFire(fire, flame, light, embers, f, clan === 'black_tusks' ? 0.5 : 0);
+  const place = (c: Clan) => ({ width: BACKDROP[c].w * fits[c].scale, height: BACKDROP[c].h * fits[c].scale, transform: `translate3d(${fits[c].left}px, ${fits[c].top}px, 0)` });
+  const onSharp = (c: Clan) => setSharp((s) => (s[c] ? s : { ...s, [c]: true }));
+  // Inner screens show only their own clan's stronghold, dimmed. The main menu keeps both, one faded out.
+  const layers: Clan[] = quiet ? [clan] : CLANS;
   return (
-    <div ref={box} className={`scene ${quiet ? 'scene--quiet' : ''} ${sharp ? 'is-sharp' : ''}`} aria-hidden="true">
-      <img className="scene__bg" src="./img/largashbur-dim.webp" alt="" draggable={false} style={place} />
-      {!quiet && <img className="scene__bg scene__bg--sharp" src="./img/largashbur.webp" alt="" draggable={false} style={place}
-        onLoad={() => setSharp(true)} onError={() => told.current?.()} ref={(img) => { if (img?.complete && img.naturalWidth > 0) setSharp(true); }} />}
-      {!quiet && (
-        <div className="scene__fireset">
-          <div ref={light} className="scene__firelight" style={{ left: f.fx, top: f.fy, width: 760 * f.scale, height: 430 * f.scale }} />
-          <canvas ref={fire} className="scene__fire" />
-          <canvas ref={flame} className="scene__flame" style={{ left: f.fx, top: f.fy + 7 * f.scale, width: FLAME_W * f.scale, height: FLAME_H * f.scale }} />
+    <div ref={box} className={`scene scene--${clan} ${quiet ? 'scene--quiet' : ''} ${isSharp ? 'is-sharp' : ''}`} aria-hidden="true">
+      {layers.map((c) => (
+        <div key={c} className={`scene__layer scene__layer--${c} ${c === clan ? '' : 'is-off'} ${sharp[c] ? 'is-sharp' : ''}`}>
+          <img className="scene__bg" src={BACKDROP[c].dim} alt="" draggable={false} style={place(c)} />
+          {!quiet && fetched.has(c) && <img className="scene__bg scene__bg--sharp" src={BACKDROP[c].sharp} alt="" draggable={false} style={place(c)}
+            onLoad={() => onSharp(c)} onError={() => { if (c === clan) told.current?.(); }} ref={(img) => { if (img?.complete && img.naturalWidth > 0) onSharp(c); }} />}
+          {!quiet && c === 'black_tusks' && (
+            <div className="scene__fireset">
+              <div ref={light} className="scene__firelight" style={{ left: f.fx, top: f.fy, width: 760 * f.scale, height: 430 * f.scale }} />
+              <canvas ref={fire} className="scene__fire" />
+              <canvas ref={flame} className="scene__flame" style={{ left: f.fx, top: f.fy + 7 * f.scale, width: FLAME_W * f.scale, height: FLAME_H * f.scale }} />
+            </div>
+          )}
         </div>
-      )}
+      ))}
       <div className="scene__smoke scene__smoke--a"><i /></div>{!quiet && <div className="scene__smoke scene__smoke--b"><i /></div>}
       <div className="scene__shade" />
       {!quiet && <canvas ref={embers} className="scene__embers" />}
     </div>
   );
 }
+

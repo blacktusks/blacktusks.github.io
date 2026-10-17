@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
-import { isOfficer } from '../lib/roles';
+import { CLAN, canKeepGoals, useClanScreen, type Clan } from '../lib/clan';
+import { sfx } from '../lib/sound';
 import type { Resource, Stage } from '../lib/types';
 import { Confirm, Modal, Page, num } from '../components/ui';
 
@@ -34,7 +35,7 @@ function Have({ r, canEdit, onSave }: { r: Resource; canEdit: boolean; onSave: (
     setText(String(v));
     if (v === r.have) return;
     setState('saving');
-    try { await onSave(r.id, v); setState(''); } catch { setState('error'); }
+    try { await onSave(r.id, v); setState(''); sfx('save'); } catch { setState('error'); sfx('denied'); }
   };
   return (
     <input className={`res__input ${state ? `is-${state}` : ''}`} type="text" inputMode="numeric" value={text} aria-label={`${r.name} gathered`}
@@ -45,8 +46,8 @@ function Have({ r, canEdit, onSave }: { r: Resource; canEdit: boolean; onSave: (
 
 interface Draft { id?: string; name: string; unit: string; note: string; goal: string; in_total: boolean }
 
-function StageEditor({ stage, resources, nextSort, onClose, onSaved }: {
-  stage: Stage | null; resources: Resource[]; nextSort: number; onClose: () => void; onSaved: () => void;
+function StageEditor({ clan, stage, resources, nextSort, onClose, onSaved }: {
+  clan: Clan; stage: Stage | null; resources: Resource[]; nextSort: number; onClose: () => void; onSaved: () => void;
 }) {
   const [title, setTitle] = useState(stage?.title ?? ''); const [details, setDetails] = useState(stage?.details ?? '');
   const [rows, setRows] = useState<Draft[]>(resources.map((r) => ({ id: r.id, name: r.name, unit: r.unit, note: r.note, goal: String(r.goal), in_total: r.in_total })));
@@ -58,7 +59,7 @@ function StageEditor({ stage, resources, nextSort, onClose, onSaved }: {
     try {
       let stageId = stage?.id;
       if (stage) { const { error } = await supabase.from('expansion_stages').update({ title: title.trim(), details }).eq('id', stage.id); if (error) throw error; }
-      else { const { data, error } = await supabase.from('expansion_stages').insert({ title: title.trim(), details, sort: nextSort }).select().single(); if (error) throw error; stageId = data.id; }
+      else { const { data, error } = await supabase.from('expansion_stages').insert({ title: title.trim(), details, sort: nextSort, clan }).select().single(); if (error) throw error; stageId = data.id; }
       const keep = new Set(rows.map((r) => r.id).filter(Boolean));
       const gone = resources.filter((r) => !keep.has(r.id)).map((r) => r.id);
       if (gone.length) { const { error } = await supabase.from('expansion_resources').delete().in('id', gone); if (error) throw error; }
@@ -68,8 +69,8 @@ function StageEditor({ stage, resources, nextSort, onClose, onSaved }: {
         const { error } = r.id ? await supabase.from('expansion_resources').update(row).eq('id', r.id) : await supabase.from('expansion_resources').insert({ ...row, stage_id: stageId });
         if (error) throw error;
       }
-      onSaved(); onClose();
-    } catch (err) { setError((err as { message: string }).message); } finally { setBusy(false); }
+      sfx('save'); onSaved(); onClose();
+    } catch (err) { sfx('denied'); setError((err as { message: string }).message); } finally { setBusy(false); }
   };
 
   if (removing && stage) {
@@ -111,18 +112,22 @@ function StageEditor({ stage, resources, nextSort, onClose, onSaved }: {
   );
 }
 
-export default function Expansion() {
-  const { profile } = useAuth(); const officer = isOfficer(profile!.tags);
+/** Each clan's Expansion Goals. The clan's officers keep them, and the Forgemaster. */
+export default function Expansion({ clan = 'black_tusks' }: { clan?: Clan }) {
+  useClanScreen(clan);
+  const { profile } = useAuth(); const officer = canKeepGoals(profile, clan);
   const [stages, setStages] = useState<Stage[] | null>(null); const [resources, setResources] = useState<Resource[]>([]);
   const [editing, setEditing] = useState<Stage | 'new' | null>(null); const [error, setError] = useState('');
   // Stages fold. Until someone opens or shuts one, only the stage being worked on (the first not yet gathered) is open.
   const [opened, setOpened] = useState<Set<string> | null>(null);
 
   const load = useCallback(async () => {
-    const [s, r] = await Promise.all([supabase.from('expansion_stages').select('*').order('sort'), supabase.from('expansion_resources').select('*').order('sort')]);
+    const s = await supabase.from('expansion_stages').select('*').eq('clan', clan).order('sort');
+    const ids = (s.data ?? []).map((x: Stage) => x.id);
+    const r = ids.length ? await supabase.from('expansion_resources').select('*').in('stage_id', ids).order('sort') : { data: [], error: null };
     if (s.error || r.error) return setError('Could not load the expansion goals. Check your connection and try again.');
     setError(''); setStages(s.data as Stage[]); setResources(r.data as Resource[]);
-  }, []);
+  }, [clan]);
   useEffect(() => { void load(); }, [load]);
 
   const saveHave = async (id: string, have: number) => {
@@ -161,7 +166,7 @@ export default function Expansion() {
   );
 
   return (
-    <Page title="Expansion Goals" sub="What Largashbur needs, stage by stage" width="wide"
+    <Page title="Expansion Goals" sub={`What ${CLAN[clan].stronghold} needs, stage by stage`} width="wide"
       bar={officer && <button className="btn btn--go" onClick={() => setEditing('new')}>Add a stage</button>}>
       {error && <p className="error" role="alert">{error}</p>}
       {!stages && !error && <p className="empty">Counting the stores…</p>}
@@ -208,7 +213,7 @@ export default function Expansion() {
           </div>
         </>
       )}
-      {editing && <StageEditor stage={editing === 'new' ? null : editing} resources={editing === 'new' ? [] : resources.filter((r) => r.stage_id === editing.id)}
+      {editing && <StageEditor clan={clan} stage={editing === 'new' ? null : editing} resources={editing === 'new' ? [] : resources.filter((r) => r.stage_id === editing.id)}
         nextSort={(stages?.length ?? 0) + 1} onClose={() => setEditing(null)} onSaved={load} />}
     </Page>
   );

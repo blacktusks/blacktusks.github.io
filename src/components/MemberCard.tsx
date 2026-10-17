@@ -5,15 +5,19 @@ import { useAuth } from '../lib/auth';
 import { api, supabase } from '../lib/supabase';
 import { TAGS, isFallen, isForgemaster, isOfficer } from '../lib/roles';
 import type { Profile } from '../lib/types';
-import { Confirm, Modal, Tags } from './ui';
+import { ClanTags, Confirm, Modal, Tags } from './ui';
+import { CLAN, CLANS, canRemove, sharesClan, sortClans, type Clan } from '../lib/clan';
 import { Masteries, MasteryTag } from './Mastery';
 import { AvailabilityEditor, AvailabilityStrip } from './Availability';
 import { MAX_LEVEL, MAX_MASTERIES, SKILL, SKILLS, cleanMasteries, type Mastery } from '../lib/masteries';
 import { cleanWeek, deviceZone, hoursFree } from '../lib/availability';
 import { ChangePassword } from '../screens/Account';
 import { FireBurstButton } from './FireBurst';
+import { sfx } from '../lib/sound';
 
-export interface Presence { configured: boolean; ok?: boolean; reason?: string; server?: string; members: { name: string; status: string; game: string | null }[] }
+/** Each clan's Discord, as the server function last found it. */
+export interface PresenceServer { clan: Clan; name: string; configured: boolean; ok?: boolean; server?: string; online?: number; reason?: string }
+export interface Presence { configured: boolean; ok?: boolean; reason?: string; server?: string; members: { name: string; status: string; game: string | null }[]; servers?: PresenceServer[] }
 export type Status = 'realm' | 'discord' | 'offline' | 'unknown';
 export const STATUS: Record<Status, [string, string]> = {
   realm: ['In the realm', 'Discord shows them playing Skyrim right now.'],
@@ -41,14 +45,33 @@ export const longDate = (day: string) => new Date(day + 'T12:00:00').toLocaleDat
 
 export function TagPicker({ value, onChange, mine }: { value: string[]; onChange: (t: string[]) => void; mine: string[] }) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id]);
-  const locked = (id: string) => (id === 'forgemaster' && !mine.includes('forgemaster'))
+  // There is one Forgemaster: that tag is never handed out or taken away, here or anywhere.
+  const locked = (id: string) => id === 'forgemaster'
     || (id === 'chieftain' && !mine.includes('chieftain') && !mine.includes('forgemaster'));
+  const why = (id: string) => (id === 'forgemaster' ? 'There is only one Forgemaster. This tag cannot be given or taken.' : 'Only the Chieftain or a Forgemaster can change this tag.');
   return (
     <div className="tagpick">
       {TAGS.map((t) => (
         <button type="button" key={t.id} className={`tagpick__one ${value.includes(t.id) ? 'is-on' : ''}`} style={{ ['--c' as any]: t.color }}
-          aria-pressed={value.includes(t.id)} disabled={locked(t.id)} title={locked(t.id) ? 'Only the Chieftain or a Forgemaster can change this tag.' : t.about}
+          aria-pressed={value.includes(t.id)} disabled={locked(t.id)} title={locked(t.id) ? why(t.id) : t.about}
           onClick={() => toggle(t.id)}>{t.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Clan tags, for the Forgemaster (and, when adding a member, an officer of both clans). A member keeps at least one. */
+export function ClanPicker({ value, onChange, allowed = CLANS }: { value: string[]; onChange: (c: Clan[]) => void; allowed?: Clan[] }) {
+  const on = sortClans(value);
+  const toggle = (c: Clan) => {
+    const next = on.includes(c) ? on.filter((x) => x !== c) : sortClans([...on, c]);
+    if (next.length) onChange(next);
+  };
+  return (
+    <div className="clanpick" role="group" aria-label="Clan tags">
+      {CLANS.filter((c) => allowed.includes(c)).map((c) => (
+        <button type="button" key={c} className={`clanpick__one pennant pennant--${c} ${on.includes(c) ? 'is-on' : ''}`} aria-pressed={on.includes(c)}
+          title={on.includes(c) && on.length === 1 ? 'Every member belongs to at least one clan.' : CLAN[c].tag} onClick={() => toggle(c)}>{CLAN[c].tag}</button>
       ))}
     </div>
   );
@@ -94,7 +117,7 @@ function Fallen({ member }: { member: Profile }) {
 /** Pay Respect: green praying hands rise with a fire behind them and small flames flying out, and are gone in a moment.
  *  Nothing is saved; it is a gesture, and it can be made as often as it is meant. */
 function PayRespect({ name }: { name: string }) {
-  return <FireBurstButton label="Pay Respect" said={`You pay your respects to ${name}.`} />;
+  return <FireBurstButton label="Pay Respect" said={`You pay your respects to ${name}.`} sound="respect" />;
 }
 
 /** Choose up to three masteries and a level for each. The tag beside each row is how it will look. */
@@ -146,12 +169,14 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
   const self = member.id === me.id;
   const fallen = isFallen(member.tags);
   const officer = isOfficer(me.tags), smith = isForgemaster(me.tags);
-  const canManage = officer && (smith || !member.tags.includes('forgemaster') || self);
+  // Officers manage the members of their own clan; the Forgemaster manages everyone.
+  const canManage = officer && (self || sharesClan(me, member)) && (smith || !member.tags.includes('forgemaster') || self);
   const editable = self || canManage;
   // Every card opens as members see it. Edit switches to the form.
   const [editing, setEditing] = useState(false);
   const [display, setDisplay] = useState(member.display_name); const [discord, setDiscord] = useState(member.discord_name ?? '');
   const [username, setUsername] = useState(member.username ?? ''); const [tags, setTags] = useState(member.tags);
+  const [clans, setClans] = useState<Clan[]>(sortClans(member.clans));
   const [bio, setBio] = useState(member.bio ?? ''); const [masteries, setMasteries] = useState<Mastery[]>(() => cleanMasteries(member.masteries));
   const [zone, setZone] = useState(member.timezone ?? deviceZone()); const [week, setWeek] = useState(() => cleanWeek(member.availability));
   const [honor, setHonor] = useState(member.death_honor ?? '');
@@ -165,11 +190,11 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
 
   const run = async (fn: () => Promise<void>) => {
     setError(''); setBusy(true); setSaved(false);
-    try { await fn(); } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+    try { await fn(); } catch (err) { sfx('denied'); setError((err as Error).message); } finally { setBusy(false); }
   };
   const startEditing = () => {
     // start from what is saved now, not from an edit that was abandoned earlier
-    setDisplay(member.display_name); setDiscord(member.discord_name ?? ''); setUsername(member.username ?? ''); setTags(member.tags);
+    setDisplay(member.display_name); setDiscord(member.discord_name ?? ''); setUsername(member.username ?? ''); setTags(member.tags); setClans(sortClans(member.clans));
     setBio(member.bio ?? ''); setMasteries(cleanMasteries(member.masteries)); setZone(member.timezone ?? deviceZone()); setWeek(cleanWeek(member.availability));
     setHonor(member.death_honor ?? ''); setCause(member.death_cause ?? ''); setDied(member.death_date ?? ''); setDateUnknown(!!member.death_date_unknown);
     setError(''); setSaved(false); setEditing(true);
@@ -177,7 +202,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     void run(async () => {
-      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username } : {}) });
+      if (canManage) await api('admin.update', { id: member.id, display_name: display, discord_name: discord, tags, ...(smith ? { username, clans } : {}) });
       else { const { error } = await supabase.rpc('update_my_profile', { p_display_name: display, p_discord_name: discord }); if (error) throw new Error(error.message); }
       // An officer sets another member's masteries; your own card saves itself below. The database checks the list either way.
       if (canManage && !self) { const { error } = await supabase.rpc('set_member_masteries', { p_id: member.id, p_masteries: masteries }); if (error) throw new Error(error.message); }
@@ -196,6 +221,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
       }
       onChanged();
       const nowFallen = canManage ? tags.includes('deceased') : fallen;
+      sfx('save');
       if (nowFallen !== fallen && onMoved) { onMoved(display.trim() || member.display_name, nowFallen); return; }
       setSaved(true); setEditing(false);
     });
@@ -215,7 +241,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
   // The fallen have no online status: what is left of them is on the card.
   const top = (
     <div className="member__top">
-      <Tags tags={member.tags} />
+      <span className="member__tags"><ClanTags clans={member.clans} /><Tags tags={member.tags} /></span>
       {!fallen && <span className="roster__status">
         {st.status !== 'unknown' && !(onApp && st.status === 'offline') && <span className={`presence presence--${st.status}`} title={STATUS[st.status][1]}>{STATUS[st.status][0]}</span>}
         {onApp && <span className="presence presence--app" title={ON_APP}>On the app</span>}
@@ -287,6 +313,8 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!smith} autoCapitalize="none" spellCheck={false} />
             {!smith && <small>Only a Forgemaster can change a sign-in name.</small>}
           </label>
+          <span className="label">Clan tags</span>
+          {smith ? <ClanPicker value={clans} onChange={setClans} /> : <div className="clanpick"><ClanTags clans={member.clans} /><small className="muted">Only the Forgemaster changes clan tags.</small></div>}
           <span className="label">Tags</span>
           <TagPicker value={tags} onChange={setTags} mine={me.tags} />
           {tags.includes('deceased') !== fallen && <p className="hint">{fallen
@@ -296,7 +324,7 @@ export function MemberCard({ member, me, presence, onApp, onClose, onChanged, on
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row" style={{ marginTop: 16 }}>
           {self && <button type="button" className="btn" onClick={() => setChanging(true)}>Change password</button>}
-          {canManage && !self && <button type="button" className="btn btn--danger" onClick={() => setRemoving(true)}>Remove member</button>}
+          {canRemove(me, member) && <button type="button" className="btn btn--danger" onClick={() => setRemoving(true)}>Remove member</button>}
           <span style={{ flex: 1 }} />
           <button type="button" className="btn" onClick={() => { setError(''); setEditing(false); }}>Cancel</button>
           <button className="btn btn--go" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>

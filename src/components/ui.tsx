@@ -1,7 +1,9 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { TAG, sortTags, type Tag } from '../lib/roles';
+import { CLAN, isClan, sortClans } from '../lib/clan';
 import { Scene } from './Scene';
+import { sfx } from '../lib/sound';
 
 export function TagChip({ id }: { id: string }) {
   const t = TAG[id as Tag];
@@ -11,6 +13,17 @@ export function TagChip({ id }: { id: string }) {
 export function Tags({ tags }: { tags: string[] }) {
   if (!tags.length) return <span className="muted small">No tags yet</span>;
   return <span className="tags">{sortTags(tags).map((t) => <TagChip key={t} id={t} />)}</span>;
+}
+
+/** A clan tag: a small swallowtail pennant, unlike the round role tags. */
+export function ClanTag({ id }: { id: string }) {
+  if (!isClan(id)) return null;
+  return <span className={`pennant pennant--${id}`} title={CLAN[id].tag}>{CLAN[id].tag}</span>;
+}
+export function ClanTags({ clans }: { clans?: string[] | null }) {
+  const list = sortClans(clans);
+  if (!list.length) return null;
+  return <span className="pennants">{list.map((c) => <ClanTag key={c} id={c} />)}</span>;
 }
 
 /** Names the browser tab after the screen that is showing. */
@@ -36,7 +49,7 @@ export function Page({ title, sub, children, bar, width, back = '/' }: {
         </header>
         <main className={`page__body ${width ? `page__body--${width}` : ''}`}>{children}</main>
         <footer className="page__bar">
-          <Link to={back} className="btn back">Back</Link>
+          <Link to={back} className="btn back" onClick={() => sfx('back')}>Back</Link>
           <span className="spacer" />
           {bar}
         </footer>
@@ -54,6 +67,8 @@ export function Modal({ title, children, foot, onClose, wide }: {
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, [onClose]);
+  // a pop-up opens with the sound of parchment
+  useEffect(() => { sfx('open'); }, []);
   // While a pop-up is open the page behind it does not scroll; only the pop-up does.
   useEffect(() => {
     const root = document.documentElement; open += 1; root.classList.add('has-modal');

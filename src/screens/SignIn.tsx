@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { Scene } from '../components/Scene';
 import { useTitle } from '../components/ui';
 import { stay } from '../lib/supabase';
+import { sfx } from '../lib/sound';
 
 export default function SignIn() {
   useTitle('Sign In');
@@ -15,8 +16,8 @@ export default function SignIn() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setBusy(true);
-    try { await signIn(name, password, keep); go('/', { replace: true }); }
-    catch (err) { setError((err as Error).message); }
+    try { await signIn(name, password, keep); sfx('select'); go('/', { replace: true }); }
+    catch (err) { sfx('denied'); setError((err as Error).message); }
     finally { setBusy(false); }
   };
 
@@ -41,7 +42,7 @@ export default function SignIn() {
             <p className="hint">Accounts are made by the clan's officers. If you have no name and password yet, ask one of them.</p>
           </div>
           <div className="modal__foot">
-            <Link to="/" className="btn back">Back</Link>
+            <Link to="/" className="btn back" onClick={() => sfx('back')}>Back</Link>
             <button className="btn btn--go" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
           </div>
         </form>

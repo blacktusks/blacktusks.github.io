@@ -5,3 +5,4 @@ tests/shots/
 .DS_Store
 tools/art/
 __pycache__/
+tools/sound/out/

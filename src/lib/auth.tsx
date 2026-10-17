@@ -3,6 +3,7 @@ import { LOGIN_EMAIL_DOMAIN } from '../config';
 import { stay, supabase } from './supabase';
 import type { Profile } from './types';
 import { leaveApp, startSeen, stopSeen } from './seen';
+import { startSide } from './clan';
 
 interface AuthState {
   ready: boolean;
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.rpc('my_profile');
     if (error) return;                                                            // offline: keep what we have
     if (!data?.id) { await supabase.auth.signOut(); setProfile(null); return; }   // account was removed
+    startSide((data as Profile).id, (data as Profile).clans);     // a member starts on their own clan's side
     setProfile(data as Profile);
   }, []);
 

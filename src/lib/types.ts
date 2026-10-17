@@ -1,6 +1,8 @@
 /** What every member can see of another member. */
 export interface Profile {
   id: string; display_name: string; tags: string[]; discord_name: string | null; created_at: string;
+  /** Clan tags: 'black_tusks', 'scorned' or both. Only the Forgemaster changes them. */
+  clans?: string[];
   /** The member's card: written by the member, readable by every member. */
   bio?: string; masteries?: { skill: string; level: number }[]; timezone?: string | null; availability?: number[] | null;
   /** For a member with the Deceased tag, written by officers. The date is a day, unknown, or not entered yet (null and not unknown). */
@@ -8,16 +10,18 @@ export interface Profile {
   /** Only present on your own profile and in the officers' list. */
   username?: string; must_change_password?: boolean;
 }
-export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at, bio, masteries, timezone, availability, death_honor, death_cause, death_date, death_date_unknown';
+export const PROFILE_COLUMNS = 'id, display_name, tags, discord_name, created_at, bio, masteries, timezone, availability, death_honor, death_cause, death_date, death_date_unknown, clans';
 /** An officer's own wording for a tag on the Roles screen. */
 export interface RoleNote { tag: string; about: string; updated_at: string }
 export type Visibility = 'all' | 'specific' | 'draft';
 export interface Post {
   id: string; title: string; body: string; visibility: Visibility; audience: string[];
   expires_at?: string | null; author_id: string | null; updated_by: string | null; created_at: string; updated_at: string;
+  /** Whose board or mine it is on. */
+  clan?: string;
 }
 export interface ChangelogEntry { id: string; version: string; title: string; body: string; released_at: string }
-export interface Stage { id: string; sort: number; title: string; details: string }
+export interface Stage { id: string; sort: number; title: string; details: string; clan?: string }
 export interface Resource {
   id: string; stage_id: string; sort: number; name: string; unit: string; note: string;
   goal: number; have: number; in_total: boolean;

@@ -4,9 +4,11 @@ import { Page, useTitle } from '../components/ui';
 import { Embers } from '../components/Embers';
 import { FireBurstButton } from '../components/FireBurst';
 import { MALACATH_WORDS } from '../lib/malacath';
+import { sfx } from '../lib/sound';
 
-/** How long one of Malacath's sayings is on screen: 1.6 s rising out of the fog, 10 s held, 2.4 s sinking back. */
-export const WORD_MS = 14000;
+/** One of Malacath's sayings: 1.6 s rising out of the fog, 6 s held, 2.4 s sinking back. */
+export const IN_MS = 1600, HOLD_MS = 6000, OUT_MS = 2400;
+export const WORD_MS = IN_MS + HOLD_MS + OUT_MS;
 
 /** Any saying but the last one. */
 export function pickWord(last: number, count: number, rnd = Math.random): number {
@@ -15,24 +17,42 @@ export function pickWord(last: number, count: number, rnd = Math.random): number
   return i >= last ? i + 1 : i;
 }
 
+interface Word { id: number; text: string; born: number; leaving: number | null }
+
 /**
  * The Code of Mauloch: the way to the Seven Tenets, and Malacath's shrine. Praise him and green hands
- * rise in fire, and one of his sayings comes up out of the fog behind the statue. Only one is spoken at
- * a time: praise him again while he speaks and the fire answers, but his words wait for the fog to clear.
+ * rise in fire, and one of his sayings comes up out of the fog behind the statue. Praise him again while
+ * he speaks and the saying sinks back early as the next one rises, both at once; a saying that is still
+ * rising finishes rising first.
  */
 export default function CodeOfMauloch() {
   useTitle('Code of Mauloch');
   const go = useNavigate();
   const stage = useRef<HTMLDivElement>(null);
-  const [word, setWord] = useState<{ text: string; id: number } | null>(null);
-  const last = useRef(-1); const speaking = useRef(false); const count = useRef(0); const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  const praise = () => {
-    if (speaking.current) return;
-    speaking.current = true;
+  const [words, setWords] = useState<Word[]>([]);
+  const list = useRef<Word[]>([]);
+  const last = useRef(-1); const count = useRef(0); const timers = useRef(new Set<number>()); const queued = useRef(false);
+  useEffect(() => () => { timers.current.forEach((t) => window.clearTimeout(t)); }, []);
+  const later = (fn: () => void, ms: number) => { const t = window.setTimeout(() => { timers.current.delete(t); fn(); }, ms); timers.current.add(t); };
+  const commit = (next: Word[]) => { list.current = next; setWords(next); };
+  const speak = () => {
+    const now = performance.now();
+    // whatever he is saying now sinks back early, unless it is already sinking on its own
+    const next = list.current.map((w) => (w.leaving === null && now - w.born < IN_MS + HOLD_MS ? { ...w, leaving: now } : w));
+    for (const w of next) if (w.leaving === now) later(() => commit(list.current.filter((x) => x.id !== w.id)), OUT_MS);
     const i = pickWord(last.current, MALACATH_WORDS.length); last.current = i;
-    setWord({ text: MALACATH_WORDS[i], id: ++count.current });
-    timer.current = window.setTimeout(() => { speaking.current = false; setWord(null); }, WORD_MS);
+    const word: Word = { id: ++count.current, text: MALACATH_WORDS[i], born: now, leaving: null };
+    later(() => commit(list.current.filter((x) => x.id !== word.id)), WORD_MS);
+    commit([...next, word]);
+  };
+  const praise = () => {
+    const now = performance.now();
+    const rising = list.current.find((w) => w.leaving === null && now - w.born < IN_MS);
+    if (!rising) { speak(); return; }
+    // a saying still rising out of the fog finishes rising; the next follows the moment it has
+    if (queued.current) return;
+    queued.current = true;
+    later(() => { queued.current = false; speak(); }, IN_MS - (now - rising.born));
   };
   return (
     <div className="shrine">
@@ -41,7 +61,7 @@ export default function CodeOfMauloch() {
         <p className="page__sub">The way of the Orsimer</p>
       </header>
       <nav className="shrine__nav" aria-label="Code of Mauloch">
-        <button className="shrine__btn" onClick={() => go('/code/tenets')}>The Seven Tenets</button>
+        <button className="shrine__btn" onClick={() => { sfx('select'); go('/code/tenets'); }}>The Seven Tenets</button>
       </nav>
       <div className="shrine__stage" ref={stage}>
         <div className="shrine__fog shrine__fog--far" aria-hidden="true"><i /></div>
@@ -53,15 +73,15 @@ export default function CodeOfMauloch() {
       </div>
       <Embers from={stage} className="shrine__embers" />
       <div className="shrine__praise">
-        <FireBurstButton label="Praise Malacath" said="You praise Malacath." className="shrine__btn shrine__btn--praise" onPress={praise} />
+        <FireBurstButton label="Praise Malacath" said="You praise Malacath." className="shrine__btn shrine__btn--praise" onPress={praise} sound="praise" />
       </div>
-      <footer className="page__bar shrine__bar"><Link to="/" className="btn back">Back</Link></footer>
-      {word && (
-        <div className="oracle" key={word.id} role="status" aria-live="polite">
+      <footer className="page__bar shrine__bar"><Link to="/" className="btn back" onClick={() => sfx('back')}>Back</Link></footer>
+      {words.map((w, i) => (
+        <div className={`oracle ${w.leaving !== null ? 'is-leaving' : ''}`} key={w.id} role={i === words.length - 1 ? 'status' : undefined} aria-live={i === words.length - 1 ? 'polite' : undefined}>
           <div className="oracle__fog" aria-hidden="true" />
-          <div className="oracle__in"><p className="oracle__text">{word.text}</p></div>
+          <div className="oracle__in"><p className="oracle__text">{w.text}</p></div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

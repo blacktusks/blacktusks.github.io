@@ -80,11 +80,11 @@ async function as(claims, fn) {
   });
 }
 
-export async function seedUser(username, display, tags, password = 'TestPass123') {
+export async function seedUser(username, display, tags, password = 'TestPass123', clans = ['black_tusks']) {
   const u = await db.query(`insert into auth.users (email, encrypted_password, raw_user_meta_data) values ($1, $2, $3) returning id`,
     [`${username}@${LOGIN_DOMAIN}`, hash(password), JSON.stringify({ username })]);
-  await db.query(`insert into public.profiles (id, username, display_name, tags, must_change_password) values ($1, $2, $3, $4, false)`,
-    [u.rows[0].id, username, display, `{${tags.join(',')}}`]);
+  await db.query(`insert into public.profiles (id, username, display_name, tags, clans, must_change_password) values ($1, $2, $3, $4, $5, false)`,
+    [u.rows[0].id, username, display, `{${tags.join(',')}}`, `{${clans.join(',')}}`]);
   return u.rows[0].id;
 }
 
@@ -338,17 +338,23 @@ async function storage(req, res, url, body) {
 
 // ── functions ──
 const fnCache = new Map();
-export const discordStub = { status: 200, body: { name: 'Black Tusks', presence_count: 0, members: [] } };
+export const discordStub = { status: 200, body: { name: 'Black Tusks', presence_count: 0, members: [] },
+  /** Answers for particular servers, by Server ID: { status, body }. Any other ID gets the answer above. */
+  byGuild: {} };
 async function functions(req, res, url, body) {
   const name = url.pathname.replace('/functions/v1/', '');
+  // The function is built once; calls that arrive while it is being built wait for the same build.
   if (!fnCache.has(name)) {
     const out = path.join(ROOT, 'node_modules/.cache/dev-fn', name + '.mjs');
-    await build({ entryPoints: [path.join(ROOT, 'supabase/functions', name, 'index.ts')], outfile: out, bundle: true, format: 'esm', platform: 'node', logLevel: 'error',
-      plugins: [{ name: 'npm-specifier', setup(b) { b.onResolve({ filter: /^npm:/ }, (a) => b.resolve(a.path.slice(4).replace(/@[\d^~.]+$/, ''), { resolveDir: ROOT, kind: a.kind })); } }] });
-    fnCache.set(name, (await import(pathToFileURL(out).href + '?t=' + Date.now())).handler);
+    fnCache.set(name, (async () => {
+      await build({ entryPoints: [path.join(ROOT, 'supabase/functions', name, 'index.ts')], outfile: out, bundle: true, format: 'esm', platform: 'node', logLevel: 'error',
+        plugins: [{ name: 'npm-specifier', setup(b) { b.onResolve({ filter: /^npm:/ }, (a) => b.resolve(a.path.slice(4).replace(/@[\d^~.]+$/, ''), { resolveDir: ROOT, kind: a.kind })); } }] });
+      return (await import(pathToFileURL(out).href + '?t=' + Date.now())).handler;
+    })());
   }
+  const handler = await fnCache.get(name);
   const headers = new Headers(); for (const [k, v] of Object.entries(req.headers)) headers.set(k, String(v));
-  const r = await fnCache.get(name)(new Request(`http://localhost:${PORT}${url.pathname}`, { method: req.method, headers, body: ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? undefined : body }));
+  const r = await handler(new Request(`http://localhost:${PORT}${url.pathname}`, { method: req.method, headers, body: ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? undefined : body }));
   send(res, r.status, Buffer.from(await r.arrayBuffer()), { 'Content-Type': r.headers.get('content-type') || 'application/json' });
 }
 
@@ -356,7 +362,10 @@ async function functions(req, res, url, body) {
 const realFetch = globalThis.fetch;
 globalThis.fetch = (input, init) => {
   const u = String(input?.url ?? input);
-  if (u.startsWith('https://discord.com/api/guilds/')) return Promise.resolve(new Response(JSON.stringify(discordStub.body), { status: discordStub.status }));
+  if (u.startsWith('https://discord.com/api/guilds/')) {
+    const one = discordStub.byGuild[u.split('/')[5]] ?? discordStub;
+    return Promise.resolve(new Response(JSON.stringify(one.body), { status: one.status }));
+  }
   return realFetch(input, init);
 };
 globalThis.Deno = { env: { get: (k) => process.env[k] }, serve() {} };

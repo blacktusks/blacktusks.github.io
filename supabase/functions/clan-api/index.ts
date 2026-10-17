@@ -2,9 +2,11 @@
 //
 // It does the things the browser must never be trusted with:
 //   - account.change_password   a member changes their own password
-//   - admin.create / update / delete   officers manage member accounts
+//   - admin.create / update            officers manage the accounts of their own clan
+//   - admin.delete                     a Chieftain removes members of their own clan
+//                                      (the Forgemaster manages everyone's but can never be removed, and alone sets clan tags)
 //   - admin.set_password / reveal_password   Forgemaster only
-//   - discord.presence          reads the clan Discord's Server Widget
+//   - discord.presence          reads the Server Widget of each clan's Discord
 //
 // Secrets it needs (Supabase > Edge Functions > Secrets):
 //   VAULT_KEY            base64 of 32 random bytes; encrypts the password copies
@@ -32,7 +34,11 @@ const PUBLIC_KEY = () => apiKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"
 const LOGIN_DOMAIN = () => env("LOGIN_EMAIL_DOMAIN") || "blacktusk.invalid";
 
 const ALL_TAGS = ["chieftain", "right_tusk", "left_tusk", "wise_woman", "blooded", "blood_kin", "kinsmen",
-  "unblooded", "ally", "daedric", "forgemaster", "deceased"];
+  "unblooded", "ally", "forgemaster", "deceased"];
+const CLANS = ["black_tusks", "scorned"];
+const CLAN_NAME: Record<string, string> = { black_tusks: "The Black Tusks", scorned: "The Scorned" };
+// Where each clan's Discord Server ID is kept in app_settings.
+const GUILD_KEY: Record<string, string> = { black_tusks: "discord_guild_id", scorned: "discord_guild_id_scorned" };
 const OFFICER = ["chieftain", "right_tusk", "left_tusk", "wise_woman", "forgemaster"];
 
 const cors = {
@@ -120,7 +126,7 @@ function checkDiscord(d: unknown): string | null {
   if (s.length > 64 || /\p{Cc}/u.test(s)) throw new Fail(400, "Discord names can be at most 64 characters.");
   return s;
 }
-const SKILLS = ["one_handed", "two_handed", "dual_wielder", "armor", "shield", "cook", "alchemist", "blacksmith", "woodcutter",
+const SKILLS = ["one_handed", "two_handed", "dual_wielder", "bow", "armor", "shield", "cook", "alchemist", "blacksmith", "woodcutter",
   "tailor", "scholar", "miner", "first_aid", "lockpicking", "skinner", "harvester", "artifact_scavenger"];
 // Up to three masteries, each a known skill at level 0 to 5, no skill twice. The database checks the same.
 function checkMasteries(m: unknown): { skill: string; level: number }[] {
@@ -139,6 +145,13 @@ function checkTags(t: unknown): string[] {
   const bad = tags.filter((x) => !ALL_TAGS.includes(x));
   if (bad.length) throw new Fail(400, `Unknown tag: ${bad.join(", ").slice(0, 80)}`);
   return tags;
+}
+function checkClans(c: unknown): string[] {
+  if (!Array.isArray(c) || c.some((x) => typeof x !== "string")) throw new Fail(400, "Clans must be a list.");
+  const clans = [...new Set(c as string[])];
+  if (clans.some((x) => !CLANS.includes(x))) throw new Fail(400, "Unknown clan.");
+  if (!clans.length) throw new Fail(400, "Every member belongs to at least one clan.");
+  return CLANS.filter((x) => clans.includes(x));
 }
 function checkId(id: unknown): string {
   const s = String(id ?? "");
@@ -163,14 +176,21 @@ async function audit(db: SupabaseClient, actor: string, action: string, target: 
   if (error) throw new Fail(500, "Could not write the audit log, so nothing was done.");
 }
 
-type Me = { id: string; username: string; tags: string[] };
+type Me = { id: string; username: string; tags: string[]; clans?: string[] };
+/** An officer manages the members of their own clan (and any member not yet in one). The Forgemaster manages everyone. */
+const sharesClan = (me: Me, target: { clans?: string[] }) =>
+  has(me.tags, "forgemaster") || !(target.clans ?? []).length || (target.clans ?? []).some((c) => (me.clans ?? []).includes(c));
 // Who may hand out which tags, and whose accounts they may touch.
-function guardAccount(me: Me, target: { id: string; tags: string[] } | null, after: string[]) {
+function guardAccount(me: Me, target: { id: string; tags: string[]; clans?: string[] } | null, after: string[]) {
   const before = target?.tags ?? [];
   const changed = (tag: string) => before.includes(tag) !== after.includes(tag);
   const self = target?.id === me.id;
-  if (changed("forgemaster") && !has(me.tags, "forgemaster")) {
-    throw new Fail(403, "Only a Forgemaster can give or take the Forgemaster tag.");
+  if (target && !self && !sharesClan(me, target)) {
+    throw new Fail(403, "Officers manage the members of their own clan.");
+  }
+  // There is one Forgemaster, and the tag is never handed out or taken away. The database refuses it too.
+  if (changed("forgemaster")) {
+    throw new Fail(403, "There is only one Forgemaster. That tag cannot be given or taken.");
   }
   if (changed("chieftain") && !has(me.tags, "chieftain", "forgemaster")) {
     throw new Fail(403, "Only the Chieftain or a Forgemaster can give or take the Chieftain tag.");
@@ -200,7 +220,35 @@ async function setPassword(db: SupabaseClient, userId: string, password: string,
   }
 }
 
-let presenceCache: { at: number; guild: string; body: unknown } | null = null;
+const presenceCache = new Map<string, { at: number; body: any }>();
+
+/** One clan Discord's Server Widget: who is online, and what they are playing. Kept for 45 seconds. */
+async function widget(guild: string): Promise<any> {
+  const hit = presenceCache.get(guild);
+  if (hit && Date.now() - hit.at < 45_000) return hit.body;
+  let out: any;
+  try {
+    const res = await fetch(`https://discord.com/api/guilds/${guild}/widget.json`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) {
+      out = { ok: false, members: [],
+        reason: res.status === 403 ? "The Server Widget is switched off in the Discord server settings." : `Discord answered ${res.status}. Check the Server ID.` };
+    } else {
+      const w = await res.json();
+      const members = (Array.isArray(w.members) ? w.members : []).slice(0, 200)
+        // What someone is playing arrives as "activity" today and arrived as "game" in older
+        // answers. Discord's documentation promises neither, only the name and status.
+        .map((m: any) => {
+          const playing = m.activity?.name ?? m.game?.name;
+          return { name: String(m.username ?? "").slice(0, 64), status: String(m.status ?? ""), game: playing ? String(playing).slice(0, 80) : null };
+        });
+      out = { ok: true, server: String(w.name ?? "").slice(0, 100), online: Number(w.presence_count) || members.length, members };
+    }
+  } catch {
+    out = { ok: false, members: [], reason: "Discord did not answer. Try again in a minute." };
+  }
+  presenceCache.set(guild, { at: Date.now(), body: out });
+  return out;
+}
 
 // ── request handling ──
 async function handle(req: Request): Promise<Response> {
@@ -250,6 +298,12 @@ async function handle(req: Request): Promise<Response> {
       const discord_name = checkDiscord(body.discord_name);
       const tags = checkTags(body.tags ?? []);
       guardAccount(me, null, tags);
+      // A new member joins the clan of the officer who adds them. An officer in both clans picks one of
+      // theirs; the Forgemaster picks any.
+      const smith = has(me.tags, "forgemaster");
+      const mine = (me.clans ?? []).length ? me.clans! : ["black_tusks"];
+      const clans = body.clans !== undefined ? checkClans(body.clans) : smith ? ["black_tusks"] : [mine[0]];
+      if (!smith && clans.some((c) => !mine.includes(c))) throw new Fail(403, "Officers add members to their own clan.");
       // Only a Forgemaster may choose the password or reuse a removed member's sign-in name.
       const password = body.password && has(me.tags, "forgemaster") ? checkPassword(body.password) : tempPassword();
       if (await holderOf(db, username)) throw new Fail(409, `The sign-in name "${username}" is already in use.`);
@@ -264,7 +318,7 @@ async function handle(req: Request): Promise<Response> {
       if (error || !made?.user) throw new Fail(400, error?.message ?? "Could not create the account.");
       const done = await db.rpc("admin_finish_create", {
         p_id: made.user.id, p_username: username, p_display_name: display_name, p_tags: tags, p_discord_name: discord_name,
-        p_cipher: await seal(made.user.id, password), p_actor: me.id,
+        p_cipher: await seal(made.user.id, password), p_actor: me.id, p_clans: clans,
       });
       if (done.error) {
         const undo = await db.auth.admin.deleteUser(made.user.id);
@@ -284,6 +338,14 @@ async function handle(req: Request): Promise<Response> {
       if (body.discord_name !== undefined) patch.discord_name = checkDiscord(body.discord_name);
       if (body.tags !== undefined) patch.tags = tags;
       if (body.masteries !== undefined) patch.masteries = checkMasteries(body.masteries);
+      if (body.clans !== undefined) {
+        const clans = checkClans(body.clans);
+        const before = CLANS.filter((c) => (t.clans ?? []).includes(c));
+        if (clans.join() !== before.join()) {
+          if (!has(me.tags, "forgemaster")) throw new Fail(403, "Only the Forgemaster can change clan tags.");
+          patch.clans = clans;
+        }
+      }
       const rename = body.username !== undefined && checkUsername(body.username) !== t.username ? checkUsername(body.username) : null;
       if (rename) {
         if (!has(me.tags, "forgemaster")) throw new Fail(403, "Only a Forgemaster can change a sign-in name.");
@@ -307,10 +369,13 @@ async function handle(req: Request): Promise<Response> {
     }
 
     case "admin.delete": {
-      if (!has(me.tags, ...OFFICER)) throw new Fail(403, "Only clan officers can remove members.");
+      // Only a Chieftain removes members, and only from their own clan. The Forgemaster can remove anyone but
+      // themselves; nobody can remove the Forgemaster.
+      if (!has(me.tags, "chieftain", "forgemaster")) throw new Fail(403, "Only a Chieftain can remove members.");
       const t = await target(body.id);
       if (t.id === me.id) throw new Fail(400, "You cannot remove your own account.");
-      guardAccount(me, t, []);
+      if (has(t.tags, "forgemaster")) throw new Fail(403, "The Forgemaster cannot be removed.");
+      if (!sharesClan(me, t)) throw new Fail(403, "A Chieftain removes members of their own clan only.");
       await audit(db, me.id, "member.removed", t.id, { username: t.username, display_name: t.display_name });
       const kept = await db.from("retired_names").upsert({ username: t.username.toLowerCase(), removed_by: me.id, removed_at: new Date().toISOString() });
       if (kept.error) throw new Fail(500, "Could not record the removal, so nothing was removed.");
@@ -342,32 +407,32 @@ async function handle(req: Request): Promise<Response> {
     }
 
     case "discord.presence": {
-      const { data: setting } = await db.from("app_settings").select("value").eq("key", "discord_guild_id").maybeSingle();
-      const guild = String(setting?.value ?? "").replace(/\D/g, "").slice(0, 22);
-      if (!guild) return json({ configured: false, members: [] });
-      if (presenceCache && presenceCache.guild === guild && Date.now() - presenceCache.at < 45_000) return json(presenceCache.body);
-      let out: unknown;
-      try {
-        const res = await fetch(`https://discord.com/api/guilds/${guild}/widget.json`, { signal: AbortSignal.timeout(6000) });
-        if (!res.ok) {
-          out = { configured: true, ok: false, members: [],
-            reason: res.status === 403 ? "The Server Widget is switched off in the Discord server settings." : `Discord answered ${res.status}. Check the Server ID.` };
-        } else {
-          const w = await res.json();
-          const members = (Array.isArray(w.members) ? w.members : []).slice(0, 200)
-            // What someone is playing arrives as "activity" today and arrived as "game" in older
-            // answers. Discord's documentation promises neither, only the name and status.
-            .map((m: any) => {
-              const playing = m.activity?.name ?? m.game?.name;
-              return { name: String(m.username ?? "").slice(0, 64), status: String(m.status ?? ""), game: playing ? String(playing).slice(0, 80) : null };
-            });
-          out = { configured: true, ok: true, server: String(w.name ?? "").slice(0, 100), online: Number(w.presence_count) || members.length, members };
-        }
-      } catch {
-        out = { configured: true, ok: false, members: [], reason: "Discord did not answer. Try again in a minute." };
+      // Each clan can link its own Discord. Who is online is the two lists together; someone in both
+      // counts once, playing Skyrim if either says so.
+      const { data: settings } = await db.from("app_settings").select("key, value").in("key", Object.values(GUILD_KEY));
+      const servers: any[] = [];
+      for (const clan of CLANS) {
+        const raw = settings?.find((r: any) => r.key === GUILD_KEY[clan])?.value;
+        const guild = String(raw ?? "").replace(/\D/g, "").slice(0, 22);
+        if (!guild) { servers.push({ clan, name: CLAN_NAME[clan], configured: false }); continue; }
+        servers.push({ clan, name: CLAN_NAME[clan], configured: true, ...(await widget(guild)) });
       }
-      presenceCache = { at: Date.now(), guild, body: out };
-      return json(out);
+      const live = servers.filter((x) => x.configured);
+      const brief = servers.map(({ members, ...rest }) => rest);
+      if (!live.length) return json({ configured: false, members: [], servers: brief });
+      const seen = new Map<string, any>();
+      for (const x of live) for (const m of x.members ?? []) {
+        const key = m.name.trim().toLowerCase(); const was = seen.get(key);
+        if (!was || (!was.game && m.game)) seen.set(key, m);
+      }
+      const ok = live.some((x) => x.ok);
+      return json({
+        configured: true, ok, members: [...seen.values()],
+        server: live.filter((x) => x.ok).map((x) => x.server).join(" and "),
+        online: live.reduce((n, x) => n + (Number(x.online) || 0), 0),
+        ...(ok ? {} : { reason: live.map((x) => x.reason).find(Boolean) }),
+        servers: brief,
+      });
     }
 
     default:

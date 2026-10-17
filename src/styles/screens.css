@@ -24,6 +24,13 @@
 .dot--app { outline: 1px solid #e9c98a; outline-offset: 2px; }
 .member__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .tagpick { display: flex; flex-wrap: wrap; gap: 7px; }
+.member__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* The Forgemaster's clan-tag picker: the pennants themselves, dimmed when off. */
+.clanpick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.clanpick__one { appearance: none; border: 0; cursor: pointer; min-height: 34px; padding-top: 6px; padding-bottom: 7px; font-size: 13px; opacity: 0.38; filter: saturate(0.4); transition: opacity 0.15s, filter 0.15s; }
+.clanpick__one.is-on { opacity: 1; filter: none; }
+.clanpick__one.is-on::before { content: '✓\00a0'; }
+.clanpick__one:focus-visible { outline-offset: 2px; }
 .tagpick__one {
   min-height: 36px; padding: 3px 13px 4px; border-radius: 999px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.5); color: var(--bone-2);
   font: 400 15px/1.3 var(--ui); letter-spacing: 0.07em; cursor: pointer;
@@ -45,6 +52,8 @@
 .tabs { display: flex; justify-content: center; gap: 4px; margin: -4px 0 20px; }
 .tabs__one { min-height: 40px; padding: 4px 18px; border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer; color: var(--bone-2); font: 400 18px/1.2 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; }
 .tabs__one.is-on { color: #fff; border-bottom-color: var(--ember-hot); }
+.tabs--clans { flex-wrap: wrap; }
+@media (max-width: 520px) { .tabs--clans .tabs__one { padding: 4px 10px; font-size: 15px; letter-spacing: 0.1em; } }
 .board { columns: 2 340px; column-gap: 22px; }
 .paper {
   --ink: #2b1c10; break-inside: avoid; position: relative; margin: 0 0 22px; padding: 26px 24px 16px; color: var(--ink);
@@ -382,7 +391,8 @@
 
 /* ── roles: what each tag means ── */
 .roles { list-style: none; margin: 0 auto; padding: 0; max-width: 760px; border-top: 1px solid var(--line-2); }
-.roles__row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 8px 18px; align-items: start; padding: 14px 4px; border-bottom: 1px solid var(--line-2); }
+.roles__h { margin: 34px 0 12px; text-align: center; font: 300 20px/1.2 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--bone-2); }
+.roles__row { display: grid; grid-template-columns: minmax(150px, max-content) minmax(0, 1fr) auto; gap: 8px 18px; align-items: start; padding: 14px 4px; border-bottom: 1px solid var(--line-2); }
 .roles__tag { padding-top: 3px; }
 .roles__about { margin: 0; font-size: 18px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
 @media (max-width: 560px) {
@@ -510,15 +520,18 @@
 .shrine__praise { position: relative; z-index: 7; display: flex; justify-content: center; padding: clamp(8px, 1.6vh, 16px) var(--pad) 0; }
 .shrine__bar { position: relative; z-index: 7; background: none; }
 
-/* His words: up out of the fog for a moment, ten seconds held, then back into it. Glowing, with a light passing over them. */
+/* His words: up out of the fog for a moment, six seconds held, then back into it. Glowing, with a light passing over them.
+   Praised again, a saying sinks back early (is-leaving) while the next rises in the same place. */
 .oracle { position: fixed; z-index: 20; left: 50%; top: 46%; width: min(88vw, 640px); transform: translate(-50%, -50%); pointer-events: none; text-align: center; }
 .oracle__fog {
   position: absolute; left: -22%; right: -22%; top: -70%; bottom: -70%; opacity: 0; mix-blend-mode: screen;
   background: url('/img/fog.webp') 50% 50% / 150% 100% no-repeat;
   -webkit-mask-image: radial-gradient(closest-side, #000 25%, transparent 100%); mask-image: radial-gradient(closest-side, #000 25%, transparent 100%);
-  animation: oracle-fog 14s ease forwards;
+  animation: oracle-fog 10s ease forwards;
 }
-.oracle__in { position: relative; animation: oracle-in 14s ease forwards; }
+.oracle__in { position: relative; animation: oracle-in 10s ease forwards; }
+.oracle.is-leaving .oracle__in { animation: oracle-out 2.4s ease forwards; }
+.oracle.is-leaving .oracle__fog { animation: oracle-fog-out 2.4s ease forwards; }
 .oracle__in::before { content: ''; position: absolute; inset: -46% -10%; z-index: -1; background: radial-gradient(closest-side, rgba(5, 3, 2, 0.72), rgba(5, 3, 2, 0.42) 55%, transparent); }
 .oracle__text {
   font: italic 500 clamp(21px, 4.6vw, 30px)/1.45 var(--book); color: #fff4df; text-wrap: balance;
@@ -534,17 +547,53 @@
 }
 @keyframes oracle-in {
   0% { opacity: 0; filter: blur(14px); transform: translateY(14px) scale(1.06); }
-  11.4% { opacity: 1; filter: blur(0); transform: none; }
-  82.9% { opacity: 1; filter: blur(0); transform: none; }
+  16% { opacity: 1; filter: blur(0); transform: none; }
+  76% { opacity: 1; filter: blur(0); transform: none; }
   100% { opacity: 0; filter: blur(12px); transform: translateY(-16px) scale(1.04); }
 }
-@keyframes oracle-fog {
-  0% { opacity: 0; transform: scale(0.85); } 7% { opacity: 0.72; transform: scale(1); } 20% { opacity: 0.2; }
-  80% { opacity: 0.2; transform: scale(1.04); } 92% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.2); }
+@keyframes oracle-out {
+  from { opacity: 1; filter: blur(0); transform: none; }
+  to { opacity: 0; filter: blur(12px); transform: translateY(-16px) scale(1.04); }
 }
+@keyframes oracle-fog {
+  0% { opacity: 0; transform: scale(0.85); } 10% { opacity: 0.72; transform: scale(1); } 28% { opacity: 0.2; }
+  72% { opacity: 0.2; transform: scale(1.04); } 89% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.2); }
+}
+@keyframes oracle-fog-out { 0% { opacity: 0.2; transform: scale(1.04); } 45% { opacity: 0.72; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.2); } }
 @keyframes oracle-shine { 0%, 30% { background-position: 100% 0; } 75%, 100% { background-position: 0% 0; } }
-@keyframes oracle-plain { 0% { opacity: 0; } 11.4%, 82.9% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes oracle-plain { 0% { opacity: 0; } 16%, 76% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes oracle-plain-out { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .shrine__fog i, .shrine__halo, .shrine__glow { animation: none; }
-  .oracle__in { animation-name: oracle-plain; } .oracle__fog { display: none; } .oracle__text { animation: none; }
+  .oracle__in { animation-name: oracle-plain; } .oracle.is-leaving .oracle__in { animation-name: oracle-plain-out; } .oracle__fog { display: none; } .oracle__text { animation: none; }
 }
+
+/* ── settings ── */
+.settings { display: grid; gap: 16px; max-width: 640px; margin: 0 auto; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; cursor: pointer; }
+.setting + .setting { border-top: 1px solid var(--line-2); margin-top: 6px; padding-top: 12px; }
+.setting__text { display: grid; gap: 3px; min-width: 0; }
+.setting__label { font: 400 17px/1.25 var(--ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--bone); }
+.setting small { font: 400 15px/1.4 var(--book); color: var(--bone-2); }
+.setting.is-off { opacity: 0.45; cursor: default; }
+.setting--range .setting__label { flex: 0 0 auto; font-size: 15px; color: var(--bone-2); }
+.setting__value { flex: 0 0 3.2em; text-align: right; font: 400 15px/1 var(--ui); letter-spacing: 0.06em; color: var(--bone-2); font-variant-numeric: tabular-nums; }
+.panel__body > .btn { margin-top: 12px; }
+/* an iron switch: a dark slot with an ember knob when on */
+.switch { appearance: none; -webkit-appearance: none; flex: 0 0 auto; position: relative; width: 54px; height: 30px; margin: 0; border-radius: 15px; cursor: pointer;
+  background: #1a1411; border: 1px solid var(--line); transition: background 0.18s, border-color 0.18s; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--bone-3); transition: transform 0.18s, background 0.18s, box-shadow 0.18s; }
+.switch:checked { background: color-mix(in srgb, var(--ember) 35%, #120a07); border-color: rgba(255, 146, 72, 0.6); }
+.switch:checked::after { transform: translateX(24px); background: var(--ember-hot); box-shadow: 0 0 10px rgba(255, 146, 72, 0.6); }
+.switch:disabled { cursor: default; }
+.switch:focus-visible { outline: 2px solid var(--ember-hot); outline-offset: 3px; }
+.range { flex: 1 1 auto; min-width: 0; height: 30px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--ember) var(--v, 50%), #2a221d var(--v, 50%)); }
+.range::-moz-range-track { height: 4px; border-radius: 2px; background: #2a221d; }
+.range::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--ember); }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: var(--ember-hot); border: 2px solid #1a0c06; box-shadow: 0 0 8px rgba(255, 146, 72, 0.5); }
+.range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--ember-hot); border: 2px solid #1a0c06; }
+.range:disabled { cursor: default; }
+.range:focus-visible { outline: 2px solid var(--ember-hot); outline-offset: 4px; }
+.settings__foot { text-align: center; font: 300 14px/1.3 var(--ui); letter-spacing: 0.1em; color: var(--bone-3); }
+@media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }

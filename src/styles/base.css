@@ -39,12 +39,15 @@ img { max-width: 100%; }
 .scene { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); overflow: hidden; background: #000; z-index: 0; }
 .scene__bg { position: absolute; left: 0; top: 0; max-width: none; user-select: none; will-change: transform; }
 /* the full picture and the fire arrive together, once the picture is whole */
+/* One layer for each clan's stronghold. On the main menu a change of clan crossfades them. */
+.scene__layer { position: absolute; inset: 0; transition: opacity 2.2s ease; }
+.scene__layer.is-off { opacity: 0; }
 .scene__bg--sharp, .scene__fireset, .scene__embers { opacity: 0; transition: opacity 0.7s ease; }
-.scene.is-sharp .scene__bg--sharp, .scene.is-sharp .scene__fireset, .scene.is-sharp .scene__embers { opacity: 1; }
+.scene__layer.is-sharp .scene__bg--sharp, .scene__layer.is-sharp .scene__fireset, .scene.is-sharp .scene__embers { opacity: 1; }
 .scene__fireset { position: absolute; inset: 0; pointer-events: none; }
 /* slow embers adrift over the whole scene, above its shading so the dark edges do not put them out */
 .scene__embers { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .scene__bg--sharp, .scene__fireset, .scene__embers { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .scene__bg--sharp, .scene__fireset, .scene__embers, .scene__layer { transition: none; } }
 .scene__fire { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
 .scene__flame { position: absolute; transform: translate(-50%, -100%); mix-blend-mode: screen; pointer-events: none; }
 /* Firelight on the ground. Overlay warms and lifts what is there, so dark stays dark. */
@@ -81,7 +84,39 @@ img { max-width: 100%; }
 .banner { display: block; width: 100%; aspect-ratio: 1; filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); }
 canvas.banner { opacity: 0; transition: opacity 0.9s ease; }
 canvas.banner.is-ready { opacity: 1; }
-.menu__banner { flex: 0 0 auto; align-self: flex-end; width: min(calc(var(--mh) * 88), calc(var(--mw) * 47)); margin-left: clamp(8px, calc(var(--mw) * 3.5), 70px); margin-bottom: calc(var(--mh) * -1.5); pointer-events: none; }
+.menu__banner { flex: 0 0 auto; align-self: flex-end; width: min(calc(var(--mh) * 88), calc(var(--mw) * 47)); margin-left: clamp(8px, calc(var(--mw) * 3.5), 70px); margin-bottom: calc(var(--mh) * -1.5); pointer-events: none; display: flex; flex-direction: column; }
+/* The clan's name over its banner, like a title screen. */
+.menu__title {
+  margin: 0 0 calc(var(--mh) * -1); text-align: center; white-space: nowrap;
+  font: 300 clamp(22px, min(calc(var(--mh) * 5.6), calc(var(--mw) * 3.6)), 64px)/1 var(--ui); letter-spacing: 0.26em; text-indent: 0.26em; text-transform: uppercase;
+  color: #f6ead6; text-shadow: 0 0 22px rgba(255, 150, 80, 0.38), 0 2px 14px #000, 0 0 3px #000;
+  transition: opacity 0.9s ease, filter 0.9s ease, color 0.9s ease, text-shadow 0.9s ease;
+}
+.menu__flag { position: relative; }
+.menu__flag .banner { transition: opacity 0.9s ease, filter 0.9s ease, transform 0.9s ease; }
+/* The switch between clans: the banner sinks into fog and the other rises out of it. */
+.menu__fog { position: absolute; left: -22%; right: -22%; top: -14%; bottom: -10%; pointer-events: none; opacity: 0; transform: scale(0.9);
+  transition: opacity 0.9s ease, transform 0.9s ease; }
+/* soft puffs of mist (one sheet of three), each drifting and swelling on its own */
+.menu__fog i { position: absolute; width: 66%; aspect-ratio: 1; background: url('/img/mist.webp') 0 0 / 300% 100% no-repeat; will-change: transform;
+  animation: mist 6s ease-in-out infinite alternate; }
+.menu__fog i:nth-child(1) { left: 4%; top: 2%; }
+.menu__fog i:nth-child(2) { left: 30%; top: 14%; width: 74%; background-position: 50% 0; animation-duration: 7.5s; animation-direction: alternate-reverse; }
+.menu__fog i:nth-child(3) { left: 6%; top: 36%; width: 64%; background-position: 100% 0; animation-duration: 5.2s; }
+.menu__fog i:nth-child(4) { left: 36%; top: 44%; width: 60%; animation-duration: 6.8s; animation-direction: alternate-reverse; }
+.menu__fog i:nth-child(5) { left: 17%; top: 20%; width: 68%; background-position: 50% 0; animation-duration: 8.4s; }
+.menu__fog i:nth-child(6) { left: 38%; top: -2%; width: 60%; background-position: 100% 0; animation-duration: 7s; animation-direction: alternate-reverse; }
+@keyframes mist { from { transform: translate3d(-5%, 3%, 0) scale(0.9) rotate(-5deg); } to { transform: translate3d(5%, -3%, 0) scale(1.1) rotate(6deg); } }
+.menu.is-fog-out .menu__fog { opacity: 1; transform: scale(1); }
+.menu.is-fog-in .menu__fog { opacity: 0; transform: scale(1.14); transition-duration: 1.3s; }
+.menu.is-fog-out .menu__flag .banner { opacity: 0; filter: blur(9px) drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); transform: scale(0.97); }
+.menu.is-fog-in .menu__flag .banner { transition-duration: 1.3s; }
+.menu.is-fog-out .menu__title { opacity: 0; filter: blur(6px); }
+.menu.is-fog-in .menu__title { transition-duration: 1.3s; }
+.menu__nav { transition: opacity 0.45s ease; }
+.menu.is-fog-out .menu__nav { opacity: 0; }
+.menu.is-fog-in .menu__nav { transition-duration: 0.8s; }
+@media (prefers-reduced-motion: reduce) { .menu__fog { display: none; } .menu__fog i { animation: none; } }
 /* The right-hand column: the list sits in the middle of the screen, the small print at the foot.
    When the screen is too short for both, the list moves up rather than under the small print. */
 .menu__side {
@@ -107,18 +142,34 @@ canvas.banner.is-ready { opacity: 1; }
 .menu__item:hover, .menu__item:focus-visible, .menu__item.is-on { color: #fff; text-shadow: 0 0 18px rgba(255, 190, 120, 0.55), 0 2px 10px #000; outline: none; }
 .menu__item:hover::before, .menu__item:focus-visible::before, .menu__item.is-on::before { transform: scaleX(1); }
 .menu__item--quiet { font-size: clamp(13px, calc(var(--fs) * 0.715), 24px); margin-bottom: 0.5em; color: var(--bone-3); }
+/* Sign Out and Settings stack close together; the space opens below the pair */
+li:has(+ li > .menu__item--quiet) > .menu__item--quiet { margin-bottom: 0; }
+/* The way to the other clan's side sits a little apart, at the foot of the list. */
+.menu__item--visit { margin-top: 0.45em; font-size: calc(var(--fs) * 0.86); color: #d9c4a6; }
+.menu--black_tusks .menu__item--visit { color: #c9d6e2; }
+.menu__item--visit[disabled] { cursor: default; }
 .menu__foot {
   grid-row: 3; align-self: end; display: flex; flex-direction: column-reverse; align-items: flex-end; text-align: right; gap: 6px; padding-top: 8px;
   font: 300 13px/1.3 var(--ui); letter-spacing: 0.08em; color: var(--bone-3); text-shadow: 0 1px 4px #000;
 }
 .menu__who { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 8px; font-size: 14px; color: var(--bone-2); max-width: calc(var(--mw) * 46); }
 .menu__install { background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--bone-2); font: inherit; letter-spacing: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.menu__tools { display: inline-flex; align-items: center; gap: 14px; }
+/* sound on or off, from the home screen */
+.menu__sound { appearance: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35); cursor: pointer; color: var(--bone-2); -webkit-tap-highlight-color: transparent; }
+.menu__sound svg { width: 20px; height: 20px; fill: currentColor; stroke: currentColor; stroke-width: 0; }
+.menu__sound .menu__sound-w, .menu__sound .menu__sound-x { fill: none; stroke-width: 1.8; stroke-linecap: round; }
+.menu__sound:hover, .menu__sound:focus-visible { color: #fff; border-color: var(--bone-3); }
+.menu__sound.is-muted { color: var(--bone-3); }
 
 /* Tall screens (phones held upright): the banner takes whatever room the list leaves, above it. */
 @media (orientation: portrait), (max-aspect-ratio: 21/20) {
   .menu { flex-direction: column; }
-  .menu__banner { flex: 1 1 0; min-height: 0; align-self: stretch; width: auto; margin: calc(var(--safe-t) + var(--mh) * 0.5) 0 0; display: grid; place-items: center; }
-  .menu__banner .banner { width: min(calc(var(--mw) * 86), calc(var(--mh) * 42)); }
+  .menu__banner { flex: 1 1 0; min-height: 0; align-self: stretch; width: auto; margin: calc(var(--safe-t) + var(--mh) * 1.6) 0 0; }
+  .menu__title { flex: 0 0 auto; margin: 0; font-size: clamp(20px, min(calc(var(--mw) * 6.6), calc(var(--mh) * 3.6)), 40px); letter-spacing: 0.22em; text-indent: 0.22em; }
+  .menu__flag { flex: 1 1 0; min-height: 0; display: grid; place-items: center; }
+  .menu__banner .banner { width: min(calc(var(--mw) * 86), calc(var(--mh) * 38)); }
   .menu__side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; padding: 6px 18px calc(12px + var(--safe-b)) max(18px, env(safe-area-inset-left)); }
   .menu__nav { --fs: clamp(15px, min(calc(var(--mh) * 2.75), calc(var(--mh) * (50 / var(--n) - 0.2) / 1.58)), 27px); gap: calc(var(--mh) * 0.2); margin-right: max(calc(var(--mw) * 7 - 18px), 4px); }
   .menu__item { padding-top: 0.24em; padding-bottom: 0.24em; }
@@ -129,12 +180,20 @@ canvas.banner.is-ready { opacity: 1; }
 /* Where the browser can measure the banner's own box, it fills that box exactly. */
 @supports (container-type: size) {
   @media (orientation: portrait), (max-aspect-ratio: 21/20) {
-    .menu__banner { container-type: size; }
+    .menu__flag { container-type: size; }
     .menu__banner .banner { width: min(86cqw, 100cqh); }
   }
 }
 /* The smallest upright phones: the letters are already at their smallest, so the lines close up instead and the banner keeps some room. */
 @media (orientation: portrait) and (max-height: 540px) { .menu__item { padding-top: 0.15em; padding-bottom: 0.15em; } .menu__item--quiet { margin-bottom: 0.1em; } }
+/* Shorter upright phones: the lines close up, the title and the small print shrink, so the banner keeps its room. */
+@media (orientation: portrait) and (max-height: 680px) {
+  .menu__nav { --fs: clamp(14px, min(calc(var(--mh) * 2.75), calc(var(--mh) * (50 / var(--n) - 0.2) / 1.58)), 27px); gap: 0; }
+  .menu__item { padding-top: 0.1em; padding-bottom: 0.1em; } .menu__item--quiet { margin-bottom: 0.05em; } .menu__item--visit { margin-top: 0.2em; }
+  .menu__title { font-size: 18px; } .menu__banner { margin-top: calc(var(--safe-t) + 6px); }
+  .menu__who .tags, .menu__who .pennants { display: none; }
+  .menu__foot { padding-top: 4px; } .menu__side { padding-bottom: calc(6px + var(--safe-b)); }
+}
 /* Short and wide (phones on their side): a tighter list, and the install link gives up its line. */
 @media (orientation: landscape) and (max-height: 520px) {
   .menu__nav { --fs: clamp(14px, min(calc(var(--mh) * 5.4), calc(var(--mh) * 77 / var(--n) / 1.38)), 22px); gap: 0; }
@@ -142,7 +201,15 @@ canvas.banner.is-ready { opacity: 1; }
   .menu__item--quiet { font-size: clamp(12px, calc(var(--fs) * 0.74), 18px); margin-bottom: 0.25em; }
   .menu__foot { gap: 2px; padding-top: 4px; }
 }
-@media (orientation: landscape) and (max-height: 360px) { .menu__install { display: none; } .menu__who { font-size: 12px; } }
+@media (orientation: landscape) and (max-height: 420px) {
+  .menu__who .tags, .menu__who .pennants { display: none; }
+  .menu__item { padding-top: 0.1em; padding-bottom: 0.1em; } .menu__item--quiet { margin-bottom: 0.25em; }
+}
+@media (orientation: landscape) and (max-height: 360px) {
+  .menu__install { display: none; } .menu__who { display: none; }
+  .menu__item { padding-top: 0.08em; padding-bottom: 0.08em; } .menu__item--visit { margin-top: 0.15em; } .menu__sound { width: 30px; height: 30px; }
+}
+@media (orientation: landscape) and (max-height: 320px) { .menu__item { padding-top: 0.03em; padding-bottom: 0.03em; } .menu__foot { padding-top: 2px; } }
 
 /* ── tags ── */
 .tag {
@@ -152,6 +219,17 @@ canvas.banner.is-ready { opacity: 1; }
 }
 .tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+/* Clan tags: a small swallowtail pennant, square-cut and dyed in the clan's colours, never round like the role tags. */
+.pennant {
+  --pc: #a3271b; --pe: #e2553f;
+  display: inline-flex; align-items: center; padding: 2px 16px 3px 9px; white-space: nowrap;
+  font: 500 11.5px/1.35 var(--ui); letter-spacing: 0.12em; text-transform: uppercase; color: #fff4e6;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 92%, #fff), var(--pc) 55%, color-mix(in srgb, var(--pc) 70%, #000));
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 50%, 100% 100%, 0 100%);
+  box-shadow: inset 3px 0 0 var(--pe); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.pennant--scorned { --pc: #3b4a5a; --pe: #a9c3dc; color: #eef4fa; }
+.pennants { display: inline-flex; flex-wrap: wrap; gap: 5px; }
 
 /* ── inner pages ── */
 .page { position: relative; z-index: 1; min-height: var(--page, 100dvh); display: flex; flex-direction: column; }
@@ -256,6 +334,8 @@ html.has-modal, html.has-modal body { overflow: hidden; }
 @keyframes oath-shine { 0%, 35% { background-position: 100% 0; } 75%, 100% { background-position: 0% 0; } }
 @media (prefers-reduced-motion: reduce) { .oath__name { animation: none; } }
 .oath__seal { width: 86px; height: 86px; margin: 28px auto 0; border-radius: 50%; object-fit: cover; opacity: 0.9; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(224, 82, 44, 0.35); }
+.oath--lines p { margin-bottom: 0.5em; }
+.oath__seal--scorned { width: 92px; height: 120px; border-radius: 0; object-fit: contain; box-shadow: none; filter: drop-shadow(0 0 22px rgba(160, 30, 20, 0.45)); }
 ::placeholder { color: var(--bone-3); font-style: italic; opacity: 1; }
 .lbar__search::placeholder { font-style: normal; }
 

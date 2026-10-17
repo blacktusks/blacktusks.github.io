@@ -76,7 +76,8 @@ ok((await ugak.from('mine_deals').select('*')).data.length === 1, 'others only s
 ok((await ugak.from('mine_deals').update({ title: 'x' }).eq('id', d2.id).select()).data.length === 0, 'members cannot edit deals');
 
 console.log('expansion goals');
-const res = (await ugak.from('expansion_resources').select('*')).data;
+const btStages = (await ugak.from('expansion_stages').select('id').eq('clan', 'black_tusks')).data.map((r) => r.id);
+const res = (await ugak.from('expansion_resources').select('*').in('stage_id', btStages)).data;
 ok(res.length === 30 && res.every((r) => r.have === 0), 'all resources start at 0');
 const sum = (n) => res.filter((r) => r.name === n && r.in_total).reduce((s, r) => s + r.goal, 0);
 ok(sum('Gold') === 64500 && sum('Iron Ingots') === 2380 && sum('Steel Ingots') === 450 && sum('Corundum') === 700 && sum('Firewood') === 5150
@@ -167,6 +168,9 @@ ok((await nick.from('audit_log').select('*')).data.some((r) => r.action === 'pas
 ok(((await gorza.from('audit_log').select('*')).data ?? []).length === 0, 'only the Forgemaster reads the log');
 ok((await sharn.api('admin.delete', { id: sharn.me })).error, 'cannot remove your own account');
 ok((await sharn.api('admin.delete', { id: gorza.me })).error, 'an officer cannot remove the Chieftain');
+ok((await sharn.api('admin.delete', { id: morgash.me })).error?.includes('Chieftain'), 'only a Chieftain removes members: not the Wise Woman');
+ok((await yatul.api('admin.delete', { id: morgash.me })).error?.includes('Chieftain'), 'nor the Left Tusk');
+ok((await gorza.api('admin.delete', { id: nick.me })).error?.includes('Forgemaster cannot be removed'), 'nobody removes the Forgemaster');
 ok((await gorza.api('admin.delete', { id: morgash.me })).data?.ok, 'Chieftain removes a member');
 ok((await ugak.from('profiles').select('id')).data.length === 6, 'removed member is gone from the list');
 ok(await login('morgash', 'ForgeReset2026').then(() => false, () => true), 'removed member cannot sign in');
@@ -226,7 +230,7 @@ console.log('hardening');
   ok(victim.password.startsWith('tusk-') && victim.password.length === 19, 'temporary passwords are long random codes', victim.password);
   const chosen = (await sharn.api('admin.create', { username: 'chosen', display_name: 'Chosen', tags: [], password: 'OfficerPicked1' })).data;
   ok(chosen.password !== 'OfficerPicked1', "an officer cannot choose a new member's password");
-  ok((await sharn.api('admin.delete', { id: victim.profile.id })).data?.ok && (await sharn.api('admin.delete', { id: chosen.profile.id })).data?.ok, 'officer removes the members');
+  ok((await gorza.api('admin.delete', { id: victim.profile.id })).data?.ok && (await nick.api('admin.delete', { id: chosen.profile.id })).data?.ok, 'the Chieftain and the Forgemaster remove members');
   ok((await sharn.api('admin.create', { username: 'target', display_name: 'Target Again', tags: [] })).error?.includes('removed member'), "an officer cannot reuse a removed member's sign-in name");
   const again = (await nick.api('admin.create', { username: 'target', display_name: 'Target Again', tags: [] })).data;
   ok(again?.profile, 'the Forgemaster can');
@@ -336,7 +340,7 @@ console.log('tag changes');
     ok((await c.api('admin.update', { id: c.me, tags: ['blooded'] })).error?.includes('officers'), `${rank}: cannot give themselves even a plain tag`);
     ok((await c.api('admin.update', { id: gorza.me, tags: [] })).error?.includes('officers'), `${rank}: cannot change another member's tags`);
     ok((await c.api('admin.create', { username: 'made' + rank.replace(/[^a-z]/gi, ''), tags: ['chieftain'] })).error?.includes('officers'), `${rank}: cannot add a member`);
-    ok((await c.api('admin.delete', { id: gorza.me })).error?.includes('officers'), `${rank}: cannot remove a member`);
+    ok((await c.api('admin.delete', { id: gorza.me })).error?.includes('Chieftain'), `${rank}: cannot remove a member`);
     const own = await c.from('profiles').update({ tags: ['chieftain'] }).eq('id', c.me).select('id');
     ok(own.error || own.data.length === 0, `${rank}: cannot write their own tags straight to the database`);
     const other = await c.from('profiles').update({ tags: [] }).eq('id', gorza.me).select('id');
@@ -397,10 +401,9 @@ console.log('0.2.5: the fallen');
   ok((await sharn.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x'.repeat(501), p_date: null, p_unknown: false })).error, 'a cause over 500 characters is refused');
   ok((await sharn.rpc('set_death_record', { p_id: '00000000-0000-4000-8000-000000000000', p_cause: 'x', p_date: null, p_unknown: false })).error, 'a member who does not exist is refused');
   ok((await guest.rpc('set_death_record', { p_id: ghost.id, p_cause: 'x', p_date: null, p_unknown: false })).error, 'guests are refused');
-  // the same reach as the rest of an account
-  const made = await nick.api('admin.create', { username: 'Oldsmith', display_name: 'Oldsmith', tags: ['forgemaster', 'deceased'] });
-  ok((await sharn.rpc('set_death_record', { p_id: made.data.profile.id, p_cause: 'x', p_date: null, p_unknown: false })).error?.message.includes('Forgemaster'), "an officer cannot write a fallen Forgemaster's record");
-  ok(!(await nick.rpc('set_death_record', { p_id: made.data.profile.id, p_cause: 'The forge went cold.', p_date: null, p_unknown: true })).error, 'a Forgemaster can');
+  // the same reach as the rest of an account (there is only one Forgemaster, so no Forgemaster can fall)
+  ok((await nick.api('admin.create', { username: 'Oldsmith', display_name: 'Oldsmith', tags: ['forgemaster', 'deceased'] })).error, 'a second, fallen Forgemaster cannot be made');
+  ok(!(await nick.rpc('set_death_record', { p_id: ghost.id, p_cause: 'The forge went cold.', p_date: null, p_unknown: true })).error, 'the Forgemaster records one too');
   ok((await nick.from('audit_log').select('*').eq('action', 'member.death_recorded')).data.length >= 4, 'each record is written to the audit log');
   // the fallen keep their account: the card still saves, the app still opens
   ok(!(await ghostSelf.rpc('update_my_profile', { p_display_name: 'Ghost of Largashbur' })).error, 'a fallen member still changes their own name');
@@ -473,6 +476,147 @@ console.log('passage of honor');
   const cleared = await sharn.rpc('set_death_record', { p_id: id, p_honor: '   ', p_cause: 'A giant.', p_date: null, p_unknown: false });
   ok(cleared.data?.death_honor === '' && cleared.data.death_cause === 'A giant.', 'a passage can be taken back out');
   await nick.api('admin.delete', { id });
+}
+
+console.log('0.4.0: clan tags');
+{
+  const pw = 'ClanPass12345';
+  const mk = async (username, tags, clans, by = nick) => {
+    const r = await by.api('admin.create', { username, display_name: username, tags, password: pw, ...(clans ? { clans } : {}) });
+    if (r.error) throw new Error(`create ${username}: ${r.error}`);
+    return r.data.profile;
+  };
+  const clansOf = async (id) => (await nick.from('profiles').select('clans').eq('id', id).single()).data.clans.join();
+  ok(await clansOf(ugak.me) === 'black_tusks' && await clansOf(nick.me) === 'black_tusks', 'everyone here before the Scorned is a Black Tusk');
+  const zp = await mk('Zgor', ['chieftain'], ['scorned']);
+  await mk('Morra', ['wise_woman'], ['scorned']); await mk('Brag', ['right_tusk'], ['scorned']); await mk('Shum', ['blooded'], ['scorned']);
+  const zgor = await login('zgor', pw), morra = await login('morra', pw), brag = await login('brag', pw), shum = await login('shum', pw);
+  ok(zp.clans.join() === 'scorned', 'the Forgemaster adds a member to the Scorned');
+  const twin = await mk('Twin', ['blooded'], ['scorned', 'black_tusks']);
+  ok(twin.clans.join() === 'black_tusks,scorned', 'a member can carry both clan tags');
+  ok((await nick.api('admin.create', { username: 'NoClan', tags: [], clans: [] })).error?.includes('at least one'), 'every member belongs to a clan');
+  ok((await nick.api('admin.create', { username: 'Elsewhere', tags: [], clans: ['stormcloaks'] })).error?.includes('Unknown clan'), 'only the two clans exist');
+
+  // officers add to their own clan
+  const byZ = await zgor.api('admin.create', { username: 'Scornling', tags: ['unblooded'] });
+  ok(byZ.data?.profile?.clans.join() === 'scorned', 'a member added by the Scorned Chieftain joins the Scorned', byZ.error);
+  const byS = await sharn.api('admin.create', { username: 'Tuskling', tags: ['unblooded'] });
+  ok(byS.data?.profile?.clans.join() === 'black_tusks', 'one added by the Black Tusk Wise Woman joins the Black Tusks', byS.error);
+  ok((await sharn.api('admin.create', { username: 'Spy', tags: [], clans: ['scorned'] })).error?.includes('own clan'), 'an officer cannot add a member to the other clan');
+
+  // officers manage their own clan only
+  ok((await zgor.api('admin.update', { id: ugak.me, display_name: 'Renamed' })).error?.includes('own clan'), "the Scorned Chieftain cannot edit a Black Tusk");
+  ok((await zgor.api('admin.delete', { id: byS.data.profile.id })).error?.includes('own clan'), 'nor remove one');
+  ok((await gorza.api('admin.update', { id: shum.me, tags: ['kinsmen'] })).error?.includes('own clan'), 'the Black Tusk Chieftain cannot edit a Scorned member');
+  ok(!(await zgor.api('admin.update', { id: shum.me, tags: ['blooded'], display_name: 'Shum the Grim' })).error, 'the Scorned Chieftain edits a Scorned member');
+  ok(!(await zgor.api('admin.update', { id: twin.id, display_name: 'Twin Tusk' })).error && !(await yatul.api('admin.update', { id: twin.id, display_name: 'Twin' })).error, 'officers of either clan edit a member of both');
+  ok((await zgor.rpc('set_member_masteries', { p_id: ugak.me, p_masteries: [] })).error?.message.includes('own clan'), 'nor can masteries be set across clans');
+  const fallenBT = await mk('Oldbones', ['blooded', 'deceased'], ['black_tusks']);
+  ok((await zgor.rpc('set_death_record', { p_id: fallenBT.id, p_cause: 'x', p_date: null, p_unknown: false })).error?.message.includes('own clan'), 'nor a death record');
+  await nick.api('admin.delete', { id: fallenBT.id });
+  const zl = (await zgor.rpc('member_admin_list')).data;
+  ok(zl.length >= 10 && zl.find((m) => m.id === ugak.me).username === null && zl.find((m) => m.id === shum.me).username === 'Shum', "an officer sees every member, but only their own clan's sign-in names");
+  ok((await sharn.api('admin.delete', { id: byS.data.profile.id })).error?.includes('Chieftain') && (await morra.api('admin.delete', { id: byZ.data.profile.id })).error?.includes('Chieftain'),
+    'only Chieftains remove members, not the Wise Women');
+  ok(!(await zgor.api('admin.delete', { id: byZ.data.profile.id })).error && !(await gorza.api('admin.delete', { id: byS.data.profile.id })).error, 'each Chieftain removes members of their own clan');
+
+  // only the Forgemaster sets clan tags
+  ok((await gorza.api('admin.update', { id: ugak.me, clans: ['scorned'] })).error?.includes('Forgemaster'), 'a Chieftain cannot change clan tags');
+  ok((await zgor.api('admin.update', { id: shum.me, clans: ['scorned', 'black_tusks'] })).error?.includes('Forgemaster'), 'nor can the Scorned Chieftain');
+  ok(!(await gorza.api('admin.update', { id: ugak.me, clans: ['black_tusks'], display_name: 'Ugak' })).error, 'sending the clan tags unchanged is fine');
+  const moved = await nick.api('admin.update', { id: shum.me, clans: ['black_tusks', 'scorned'] });
+  ok(moved.data?.profile?.clans.join() === 'black_tusks,scorned', 'the Forgemaster changes clan tags', moved.error);
+  ok((await nick.api('admin.update', { id: shum.me, clans: [] })).error?.includes('at least one'), 'but never to none');
+  await nick.api('admin.update', { id: shum.me, clans: ['scorned'] });
+  const direct = await shum.from('profiles').update({ clans: ['black_tusks'] }).eq('id', shum.me).select('id');
+  ok(direct.error || direct.data.length === 0, 'a member cannot write clan tags straight to the database');
+  let badClan = false;
+  try { await raw.query(`update public.profiles set clans = array['dawnguard'] where id = $1`, [shum.me]); } catch { badClan = true; }
+  ok(badClan, 'the database refuses a clan that does not exist');
+
+  console.log('0.4.0: one Forgemaster');
+  ok((await nick.api('admin.create', { username: 'Smith2', tags: ['forgemaster'] })).error?.includes('only one Forgemaster'), 'not even the Forgemaster makes another Forgemaster');
+  ok((await nick.api('admin.update', { id: gorza.me, tags: ['chieftain', 'forgemaster'] })).error?.includes('only one Forgemaster'), 'nor hands the tag to an existing member');
+  ok((await nick.api('admin.update', { id: nick.me, tags: ['right_tusk'] })).error?.includes('only one Forgemaster'), 'nor takes it from themselves');
+  ok((await zgor.api('admin.update', { id: shum.me, tags: ['forgemaster'] })).error, 'no officer can hand it out');
+  ok(!(await nick.api('admin.update', { id: nick.me, tags: ['right_tusk', 'forgemaster', 'blooded'] })).error, "the Forgemaster's other tags still change");
+  let dbRefused = 0;
+  try { await raw.query(`update public.profiles set tags = array['blooded','forgemaster'] where id = $1`, [ugak.me]); } catch { dbRefused++; }
+  try { await raw.query(`update public.profiles set tags = array['right_tusk'] where id = $1`, [nick.me]); } catch { dbRefused++; }
+  ok(dbRefused === 2, 'the database itself refuses giving or taking the tag');
+  await nick.api('admin.update', { id: nick.me, tags: ['right_tusk', 'forgemaster'] });
+
+  console.log('0.4.0: notice boards');
+  const np = async (c, clan, title) => (await c.from('announcements').insert({ title, clan }).select().single());
+  ok(!(await np(zgor, 'scorned', 'Scorned muster')).error, 'the Scorned Chieftain posts on the Scorned board');
+  ok(!(await np(brag, 'black_tusks', 'From Narzulbur')).error, 'a Scorned Right Tusk posts on the Black Tusk board');
+  ok(!(await np(yatul, 'scorned', 'From Largashbur')).error, 'a Black Tusk Left Tusk posts on the Scorned board');
+  ok((await np(shum, 'scorned', 'no')).error, 'a Scorned Blooded cannot post');
+  ok((await np(nick, 'dawnguard', 'no')).error, 'there are only two boards');
+  const board = async (c, clan) => (await c.from('announcements').select('title').eq('clan', clan)).data.map((r) => r.title);
+  ok((await board(ugak, 'scorned')).includes('Scorned muster') && (await board(shum, 'black_tusks')).includes('From Narzulbur'), "every member reads both clans' boards");
+
+  console.log('0.4.0: the mines');
+  const md = async (c, clan, title) => (await c.from('mine_deals').insert({ author_id: c.me, title, clan, visibility: 'all' }).select().single());
+  const bt = (await md(yatul, 'black_tusks', 'Largashbur iron')).data;
+  ok(bt?.id, 'a Black Tusk Left Tusk keeps the Mine of the Black Tusks');
+  ok((await md(zgor, 'black_tusks', 'no')).error, 'the Scorned Chieftain cannot post in the Mine of the Black Tusks');
+  const sc = (await md(zgor, 'scorned', 'Gloombound ebony')).data;
+  ok(sc?.id && !(await md(morra, 'scorned', 'Gloombound corundum')).error, 'the Scorned Chieftain and Wise Woman keep the Mine of the Scorned');
+  ok((await md(shum, 'scorned', 'no')).error, 'a Scorned Blooded cannot');
+  ok(!(await md(brag, 'scorned', 'Gloombound iron')).error, 'so does the Scorned Right Tusk: any Scorned officer');
+  ok((await md(gorza, 'scorned', 'no')).error, 'nor the Black Tusk Chieftain');
+  ok(!(await md(nick, 'scorned', 'Forge terms')).error && !(await md(nick, 'black_tusks', 'Forge terms')).error, 'the Forgemaster keeps both');
+  ok((await zgor.from('mine_deals').update({ title: 'x' }).eq('id', bt.id).select()).data.length === 0, 'the Scorned cannot edit a Black Tusk mine deal');
+  ok((await yatul.from('mine_deals').update({ title: 'x' }).eq('id', sc.id).select()).data.length === 0, 'nor the Black Tusks a Scorned one');
+  ok((await yatul.from('mine_deals').update({ clan: 'scorned' }).eq('id', bt.id).select()).error, 'a deal cannot be moved into the other mine');
+  ok((await zgor.from('mine_deals').delete().eq('id', bt.id).select()).data.length === 0 && (await morra.from('mine_deals').delete().eq('id', sc.id).select()).data.length === 1, 'each mine is cleared only by its own keepers');
+  ok((await shum.from('mine_deals').select('title').eq('clan', 'black_tusks')).data.some((r) => r.title === 'Largashbur iron'), "a visitor reads the other clan's open deals");
+
+  console.log('0.4.0: expansion goals');
+  const scStages = (await shum.from('expansion_stages').select('id, title, sort').eq('clan', 'scorned').order('sort')).data;
+  const scRes = (await shum.from('expansion_resources').select('*').in('stage_id', scStages.map((r) => r.id))).data;
+  const ssum = (n) => scRes.filter((r) => r.name === n && r.in_total).reduce((t, r) => t + r.goal, 0);
+  ok(scStages.length === 5 && scStages[4].title.startsWith('Stage 5') && scRes.every((r) => r.have === 0), 'the Scorned have their own five stages, starting at 0');
+  ok(ssum('Gold') === 64500 && ssum('Iron Ingots') === 2380 && ssum('Steel Ingots') === 450 && ssum('Corundum') === 700 && ssum('Firewood') === 5150
+    && ssum('Leather Strips') === 420 && ssum('Pelts (Any)') === 275 && ssum('Silver Ingots') === 8, 'their goals add up to the totals in their brief');
+  const sGold = scRes.find((r) => r.name === 'Gold').id;
+  const bGold = res.find((r) => r.name === 'Gold').id;
+  const have = async (c, id, n) => (await c.from('expansion_resources').update({ have: n }).eq('id', id).select()).data?.length === 1;
+  ok(await have(zgor, sGold, 500) && await have(morra, sGold, 600) && await have(brag, sGold, 650), 'the Scorned officers keep the Scorned goals');
+  ok(!(await have(shum, sGold, 1)) && !(await have(gorza, sGold, 1)), 'a Scorned Blooded and the Black Tusk Chieftain cannot');
+  ok(await have(gorza, bGold, 700) && await have(sharn, bGold, 800) && await have(yatul, bGold, 900), 'the Black Tusk officers keep the Black Tusk goals');
+  ok(!(await have(ugak, bGold, 1)) && !(await have(zgor, bGold, 1)), 'a Black Tusk Blooded and the Scorned Chieftain cannot');
+  ok(await have(nick, sGold, 0) && await have(nick, bGold, 0), 'the Forgemaster keeps both');
+  ok((await zgor.from('expansion_stages').insert({ title: 'Sneaky stage', clan: 'black_tusks', sort: 9 })).error, "the Scorned cannot add a stage to the Black Tusks' goals");
+  const ns = await zgor.from('expansion_stages').insert({ title: 'Stage 6: Shrine', clan: 'scorned', sort: 6 }).select().single();
+  ok(ns.data?.id && (await zgor.from('expansion_stages').delete().eq('id', ns.data.id).select()).data.length === 1, 'but adds and removes their own');
+
+  console.log('0.4.0: two Discord servers');
+  for (const k of Object.keys(discordStub.byGuild)) delete discordStub.byGuild[k];
+  discordStub.status = 200;
+  ok(!(await nick.from('app_settings').upsert({ key: 'discord_guild_id', value: '111111111111111111' })).error
+    && !(await nick.from('app_settings').upsert({ key: 'discord_guild_id_scorned', value: '222222222222222222' })).error, 'the Forgemaster saves both Server IDs');
+  ok((await zgor.from('app_settings').upsert({ key: 'discord_guild_id_scorned', value: '1' })).error, 'no one else can');
+  discordStub.byGuild['111111111111111111'] = { status: 200, body: { name: 'The Black Tusks', presence_count: 2, members: [
+    { username: 'Ugak', status: 'online' }, { username: 'Twin', status: 'idle' }] } };
+  discordStub.byGuild['222222222222222222'] = { status: 200, body: { name: 'The Scorned', presence_count: 2, members: [
+    { username: 'Zgor', status: 'online', activity: { name: 'The Elder Scrolls V: Skyrim Special Edition' } }, { username: 'twin', status: 'online', activity: { name: 'The Elder Scrolls V: Skyrim Special Edition' } }] } };
+  const two = (await shum.api('discord.presence')).data;
+  const names = two?.members?.map((m) => m.name.toLowerCase()).sort().join();
+  ok(two?.ok && names === 'twin,ugak,zgor', 'who is online comes from both servers, each member once', JSON.stringify(two)?.slice(0, 200));
+  ok(two.members.find((m) => m.name.toLowerCase() === 'twin').game?.includes('Skyrim'), 'a member in both counts as in the realm if either server says so');
+  ok(two.servers.length === 2 && two.servers.every((x) => x.configured && x.ok) && two.server === 'The Black Tusks and The Scorned', 'each server reports its own state');
+  await nick.from('app_settings').upsert({ key: 'discord_guild_id_scorned', value: '333333333333333333' });
+  discordStub.byGuild['333333333333333333'] = { status: 403, body: {} };
+  const half = (await shum.api('discord.presence')).data;
+  ok(half?.ok && half.members.length === 2 && half.servers.find((x) => x.clan === 'scorned').reason?.includes('Server Widget'), 'one server down still shows the other, and says what is wrong');
+  await nick.from('app_settings').delete().eq('key', 'discord_guild_id');
+  await nick.from('app_settings').delete().eq('key', 'discord_guild_id_scorned');
+  ok((await shum.api('discord.presence')).data?.configured === false, 'with neither set, presence is not configured');
+
+  for (const c of [zgor, morra, brag, shum]) await nick.api('admin.delete', { id: c.me });
+  await nick.api('admin.delete', { id: twin.id });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

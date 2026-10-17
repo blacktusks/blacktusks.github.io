@@ -22,7 +22,7 @@ ok(await g.evaluate(() => !document.getElementById('splash') && document.documen
 ok(await g.evaluate(() => document.querySelector('.scene').classList.contains('is-sharp') && document.querySelector('.menu__banner .banner').classList.contains('is-ready')),
   'and by then the picture behind the menu and the banner have both arrived');
 ok(await g.evaluate(() => { const se = document.scrollingElement; return se.scrollHeight <= window.innerHeight + 1 && se.scrollWidth <= window.innerWidth + 1; }), 'the main menu never scrolls');
-ok((await menu(g)).join('|') === 'Sign In|Code of Mauloch', 'guest menu is Sign In and Code of Mauloch', (await menu(g)).join('|'));
+ok((await menu(g)).join('|') === 'Sign In|Settings|Code of Mauloch', 'guest menu is Sign In, Settings below it, then Code of Mauloch', (await menu(g)).join('|'));
 await g.getByRole('button', { name: 'Code of Mauloch' }).click();
 await g.waitForSelector('.shrine'); await g.waitForFunction(() => document.querySelector('.shrine__statue')?.complete);
 ok(g.url().endsWith('#/code') && await has(g, 'button', 'The Seven Tenets') && await has(g, 'button', 'Praise Malacath') && (await g.locator('.tenet').count()) === 0,
@@ -57,18 +57,34 @@ ok(await g.evaluate(() => document.scrollingElement.scrollHeight <= window.inner
   });
   ok(first.hands && first.green && first.behind && first.sparks === 10, 'praising sends up green hands with fire behind them and small flames flying out', JSON.stringify(first));
   ok(words.includes(first.text), 'and one of his sayings rises from the fog', first.text);
-  ok(await g.evaluate(() => getComputedStyle(document.querySelector('.oracle__in')).animationName === 'oracle-in' && getComputedStyle(document.querySelector('.oracle__in')).animationDuration === '14s'),
-    'it comes out of the fog, holds, and sinks back over fourteen seconds (ten of them held)');
+  ok(await g.evaluate(() => getComputedStyle(document.querySelector('.oracle__in')).animationName === 'oracle-in' && getComputedStyle(document.querySelector('.oracle__in')).animationDuration === '10s'),
+    'it comes out of the fog, holds, and sinks back over ten seconds (six of them held)');
   ok(await g.evaluate(() => { const st = getComputedStyle(document.querySelector('.oracle__text')); return /drop-shadow/.test(st.filter) && /gradient/.test(st.backgroundImage) && st.animationName === 'oracle-shine'; }),
     'the words glow, with a light passing over them');
-  for (let i = 0; i < 4; i++) { await g.getByRole('button', { name: 'Praise Malacath' }).click(); await g.waitForTimeout(80); }
-  ok((await g.locator('.oracle').count()) === 1 && (await g.locator('.oracle__text').textContent()) === first.text && (await g.locator('.shrine .burst').count()) >= 3,
-    'praising again while he speaks sends more fire, but no second saying');
-  await g.waitForTimeout(14200);
+  ok((await g.locator('.shrine .burst').count()) >= 1, 'praising sends up the fire');
+  // Praised again while a saying is still rising: it finishes rising first, then sinks back as the next rises.
+  // Timed inside the page, so a slow machine cannot blur the moments being checked.
+  await go(g, '/code', 900);
+  const seq = await g.evaluate(async () => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Praise Malacath'));
+    const snap = () => [...document.querySelectorAll('.oracle')].map((o) => ({ text: o.querySelector('.oracle__text').textContent, leaving: o.classList.contains('is-leaving'), anim: getComputedStyle(o.querySelector('.oracle__in')).animationName }));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    btn.click(); await wait(300); for (let i = 0; i < 4; i++) btn.click(); await wait(100);
+    const a = snap(); const bursts = document.querySelectorAll('.shrine .burst').length;
+    await wait(1700); const b = snap(); await wait(2800); const c = snap();
+    btn.click(); await wait(200); const d = snap();
+    return { a, b, c, d, bursts };
+  });
+  ok(seq.a.length === 1 && !seq.a[0].leaving && seq.bursts >= 3, 'praising again while a saying is still rising sends more fire, and the saying keeps rising', JSON.stringify(seq.a));
+  ok(seq.b.length === 2 && seq.b[0].text === seq.a[0].text && seq.b[0].leaving && seq.b[0].anim === 'oracle-out' && !seq.b[1].leaving && seq.b[1].text !== seq.a[0].text && words.includes(seq.b[1].text),
+    'once it has risen it sinks back early while the next saying rises in its place, both at once (several presses make one change)', JSON.stringify(seq.b));
+  ok(seq.c.length === 1 && seq.c[0].text === seq.b[1].text, 'the old saying is gone after its fade, the new one stays', JSON.stringify(seq.c));
+  ok(seq.d.length === 2 && seq.d[0].leaving && seq.d[0].text === seq.c[0].text && !seq.d[1].leaving && seq.d[1].text !== seq.c[0].text, 'praising a saying that has fully risen changes it at once', JSON.stringify(seq.d));
+  await g.waitForTimeout(10300);
   ok((await g.locator('.oracle').count()) === 0, 'after its time the saying is gone back into the fog');
   await g.getByRole('button', { name: 'Praise Malacath' }).click(); await g.waitForTimeout(250);
   const second = await g.locator('.oracle__text').textContent();
-  ok(words.includes(second) && second !== first.text, 'the next praise brings a different saying', `${first.text} / ${second}`);
+  ok(words.includes(second) && second !== seq.d[1].text, 'the next praise brings a different saying', `${seq.d[1].text} / ${second}`);
 }
 await g.getByRole('button', { name: 'The Seven Tenets' }).click();
 ok((await g.locator('.tenet').count()) === 7 && g.url().endsWith('#/code/tenets'), 'The Seven Tenets opens the usual tenets screen');
@@ -85,7 +101,8 @@ await g.context().close();
 
 console.log('member menu');
 const nick = await user('nick');
-ok((await menu(nick)).join('|') === 'Sign Out|Profile|Code of Mauloch|Notice Board|Black Tusk Oath|Members|Deceased|Roles|Mine of the Black Tusks|Expansion Goals|Mining Map|Pricing Ledger', 'member menu has its twelve options in order: Profile above Code of Mauloch, Deceased and Roles below Members', (await menu(nick)).join('|'));
+ok((await menu(nick)).join('|') === 'Sign Out|Settings|Profile|Code of Mauloch|Notice Board|Black Tusk Oath|Members|Deceased|Roles|Mine of the Black Tusks|Expansion Goals|Mining Map|Pricing Ledger|Visit The Scorned', 'member menu has its options in order: Settings below Sign Out, Profile above Code of Mauloch, Deceased and Roles below Members, the way to the Scorned last', (await menu(nick)).join('|'));
+ok((await nick.textContent('.menu__title')) === 'The Black Tusks', 'a Black Tusk opens on the Black Tusks\' home screen');
 ok(await nick.evaluate(() => { const se = document.scrollingElement; return se.scrollHeight <= window.innerHeight + 1 && se.scrollWidth <= window.innerWidth + 1; }), 'the longer member menu still does not scroll');
 { // Profile opens your own card, the same pop-up as your name on the Members screen
   await nick.getByRole('button', { name: 'Profile', exact: true }).click(); await nick.waitForSelector('.modal');
@@ -131,7 +148,7 @@ ok((await durak.textContent('.modal')).includes('Choose your own password'), 'fi
 ok((await durak.textContent('.modal')).includes('Forgemaster can read this password'), 'the member is told the Forgemaster can read it');
 await durak.getByLabel('Temporary password').fill(temp); await durak.getByLabel('New password', { exact: true }).fill('DurakOwnPass77'); await durak.getByLabel('New password again').fill('DurakOwnPass77');
 await durak.getByRole('button', { name: 'Save password' }).click(); await durak.getByRole('button', { name: 'Continue' }).click();
-await durak.waitForTimeout(900); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 12, 'after changing it the member is in');
+await durak.waitForTimeout(900); ok((await durak.locator('.modal').count()) === 0 && (await menu(durak)).length === 14, 'after changing it the member is in');
 // Supabase ends every session on a password change. The app must have signed this one back in,
 // or the next thing that needs the server (the Members screen asks it who is online) would fail.
 await go(durak, '/members', 1200);
@@ -145,10 +162,10 @@ await durak.context().close();
   await once.getByLabel('Stay signed in').uncheck();
   await once.getByLabel('Name').fill('UGAK'); await once.getByLabel('Password').fill('TestPass123'); await once.getByRole('button', { name: 'Sign in' }).click();
   await once.waitForSelector('.menu__nav');
-  ok((await menu(once)).length === 12, 'a name typed in capitals signs in');
+  ok((await menu(once)).length === 14, 'a name typed in capitals signs in');
   ok(await once.evaluate(() => !localStorage.getItem('black-tusk-session') && !!sessionStorage.getItem('black-tusk-session')), 'unticked, nothing is left on the device after the tab closes');
   const again = await once.context().newPage(); await again.goto(t.base); await again.waitForTimeout(900);
-  ok((await menu(again)).length === 2, 'a new tab starts signed out');
+  ok((await menu(again)).length === 3, 'a new tab starts signed out');
   await once.context().close();
 }
 
@@ -212,7 +229,7 @@ await nick.getByRole('button', { name: 'Save', exact: true }).click(); await nic
 ok((await nick.locator('.fallen__date').textContent()).trim() === 'UNKNOWN' && !(await fallenCard(nick)).includes('October 3'), 'an unknown date of passing reads UNKNOWN');
 await nick.locator('.modal').getByRole('button', { name: 'Close' }).click(); await nick.waitForTimeout(300);
 { // the fallen keep their account; their own card has nothing of the living on it
-  const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 12, 'a Deceased member keeps full access');
+  const durak2 = await user('durak', 'DurakOwnPass77'); ok((await menu(durak2)).length === 14, 'a Deceased member keeps full access');
   await go(durak2, '/members', 900); await durak2.waitForSelector('.roster__row');
   ok((await durak2.locator('.roster__row', { hasText: '(you)' }).count()) === 0, 'they do not find themselves under Members');
   await go(durak2, '/', 300); await durak2.getByRole('button', { name: 'Profile', exact: true }).click(); await durak2.waitForSelector('.modal');
@@ -349,6 +366,8 @@ ok((await ugak.locator('.stage').first().textContent()).includes('500'), 'the Wi
 ok((await ugak.locator('.stage').first().locator('.stagebar__pct').textContent()).trim() === '0%' && (await ugak.locator('.stage').first().locator('.stagebar__track span').evaluate((e) => e.style.width)) !== '0%',
   "the first stage's own bar moved (500 of 16,000 gold is under 1%)");
 ok(!(await has(ugak, 'button', 'Add a stage')) && !(await has(ugak, 'button', 'Edit')), 'members cannot edit goals');
+await go(yatul, '/expansion', 900);
+ok((await yatul.locator('.res__input').count()) > 0 && await has(yatul, 'button', 'Add a stage'), "the Left Tusk keeps the goals too: every one of the clan's officers does");
 { // stages fold: only the stage being worked on starts open
   const state = async (p) => p.locator('.stage').evaluateAll((els) => els.map((e) => (e.classList.contains('is-open') ? 'open' : 'shut') + (e.querySelector('.panel__body') ? '+body' : '')));
   ok((await state(ugak)).join() === 'open+body,shut,shut,shut,shut,open+body', 'the first unfinished stage is open, later stages are folded, the total is open', (await state(ugak)).join());
@@ -358,8 +377,8 @@ ok(!(await has(ugak, 'button', 'Add a stage')) && !(await has(ugak, 'button', 'E
   await ugak.getByRole('button', { name: 'Stage 1: Wall Upgrade & Extension' }).click(); await ugak.waitForTimeout(200);
   ok((await state(ugak))[0] === 'shut', 'and pressing it again folds it');
   // once a stage is gathered in full it folds, and the next one opens
-  const before = (await t.backend.raw.query(`select id, have from public.expansion_resources r where stage_id = (select id from public.expansion_stages where sort = 1)`)).rows;
-  await t.backend.raw.query(`update public.expansion_resources set have = goal where stage_id = (select id from public.expansion_stages where sort = 1)`);
+  const before = (await t.backend.raw.query(`select id, have from public.expansion_resources r where stage_id = (select id from public.expansion_stages where sort = 1 and clan = 'black_tusks')`)).rows;
+  await t.backend.raw.query(`update public.expansion_resources set have = goal where stage_id = (select id from public.expansion_stages where sort = 1 and clan = 'black_tusks')`);
   await go(ugak, '/expansion', 900); await ugak.waitForSelector('.stage--total');
   ok((await state(ugak)).join() === 'shut,open+body,shut,shut,shut,open+body' && (await ugak.locator('.stage').first().textContent()).includes('Ready to build'),
     'a completed stage is folded by default and the next upcoming stage is open', (await state(ugak)).join());
@@ -371,8 +390,10 @@ console.log('roles');
 {
   await go(nick, '/roles', 800); await nick.waitForSelector('.roles__row');
   const roleRow = async (page, name) => (await page.locator('.roles__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
-  ok((await nick.locator('.page__title').textContent()) === 'Roles' && (await nick.locator('.roles__row').count()) === 11 && !(await nick.textContent('.roles')).includes('Daedric'),
+  ok((await nick.locator('.page__title').textContent()) === 'Roles' && (await nick.locator('.roles').first().locator('.roles__row').count()) === 11 && !(await nick.textContent('.roles')).includes('Daedric'),
     'Roles explains each of the eleven tags, and Daedric is not among them');
+  ok((await nick.locator('.roles').nth(1).locator('.pennant').allTextContents()).join('|') === 'The Black Tusks Clan|The Scorned Clan' && (await nick.locator('.roles').nth(1).locator('button').count()) === 0,
+    'and, apart from them, the two clan tags');
   ok((await nick.locator('.roles__row .tag').allTextContents()).join('|') === 'Chieftain|Right Tusk|Left Tusk|Wise Woman|Forgemaster|Blooded|Blood-Kin|Kinsmen|Un-Blooded|Ally|Deceased', 'in standing order', (await nick.locator('.roles__row .tag').allTextContents()).join('|'));
   ok((await roleRow(nick, 'Blooded')).includes('Sworn and proven.'), 'each starts with a short description');
   await nick.getByRole('button', { name: 'Edit Blooded' }).click(); await nick.waitForSelector('.modal');
@@ -476,7 +497,7 @@ console.log('discord status');
   await go(nick, '/members', 900);
   await nick.getByRole('button', { name: 'Discord link' }).click();
   ok((await nick.locator('.modal .steps').textContent()).includes('Engagement'), 'the Discord link steps point at Server Settings, Engagement');
-  await nick.getByLabel('Server ID').fill('1541830682387685516'); await nick.locator('.modal').getByRole('button', { name: 'Save' }).click();
+  await nick.getByLabel('The Black Tusks: Server ID').fill('1541830682387685516'); await nick.locator('.modal').getByRole('button', { name: 'Save' }).click();
   await nick.waitForSelector('.modal .note'); await nick.waitForTimeout(900);
   const told = (await nick.locator('.modal').textContent()).replace(/\s+/g, ' ');
   ok(told.includes('Connected to The Black Tusks') && told.includes('matching no member here: Some Stranger'), 'the Forgemaster is told who is online in Discord but matches no member', told.slice(-260));
@@ -608,7 +629,7 @@ ok((await card(ugak)).includes('Largashbur Master Smith'), 'clan-only designs na
 console.log('sign out');
 await yatul.context().close(); await ugak.context().close();
 await go(nick, '/', 500); await nick.getByRole('button', { name: 'Sign Out' }).click(); await nick.waitForTimeout(600);
-ok((await menu(nick)).join('|') === 'Sign In|Code of Mauloch', 'signing out returns to the guest menu');
+ok((await menu(nick)).join('|') === 'Sign In|Settings|Code of Mauloch', 'signing out returns to the guest menu');
 
 console.log('phone');
 await nick.context().close();

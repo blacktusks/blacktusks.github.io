@@ -12,6 +12,8 @@ import { ChangePassword } from './screens/Account';
 import { Scene } from './components/Scene';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TurnUpright } from './components/TurnUpright';
+import { useSide } from './lib/clan';
+import { setMusic } from './lib/sound';
 
 const NoticeBoard = lazy(() => import('./screens/NoticeBoard'));
 const Members = lazy(() => import('./screens/Members'));
@@ -21,6 +23,7 @@ const MineDeals = lazy(() => import('./screens/MineDeals'));
 const Expansion = lazy(() => import('./screens/Expansion'));
 const MiningMap = lazy(() => import('./screens/MiningMap'));
 const Ledger = lazy(() => import('./screens/Ledger'));
+const Settings = lazy(() => import('./screens/Settings'));
 
 function Loading() {
   return (<><Scene quiet /><div className="page"><p className="empty" style={{ marginTop: '40vh' }}>Stoking the fire…</p></div></>);
@@ -53,6 +56,9 @@ function UpdateBar() {
 
 export default function App() {
   const { ready, profile, reload } = useAuth();
+  // The music: the stranger's theme until someone signs in, then the theme of the side of the app they are on.
+  const side = useSide();
+  useEffect(() => { if (ready) setMusic(profile ? side : 'stranger'); }, [ready, profile, side]);
   useEffect(() => { if (ready || !CONFIGURED) splashPass('session'); if (!CONFIGURED) splashPass('screen'); }, [ready]);
   if (!CONFIGURED) {
     return (<><Scene quiet /><div className="page"><div className="page__body"><div className="panel" style={{ marginTop: '20vh' }}>
@@ -69,15 +75,23 @@ export default function App() {
         <Route path="/sign-in" element={profile ? <Navigate to="/" replace /> : <SignIn />} />
         <Route path="/code" element={<CodeOfMauloch />} />
         <Route path="/code/tenets" element={<SevenTenets />} />
-        <Route path="/notices" element={<MembersOnly><NoticeBoard /></MembersOnly>} />
-        <Route path="/oath" element={<MembersOnly><Oath /></MembersOnly>} />
+        {/* each clan's own screens: the Black Tusks' at the top level, the Scorned's under /scorned */}
+        <Route path="/notices" element={<MembersOnly><NoticeBoard clan="black_tusks" /></MembersOnly>} />
+        <Route path="/oath" element={<MembersOnly><Oath clan="black_tusks" /></MembersOnly>} />
+        <Route path="/deceased" element={<MembersOnly><Deceased clan="black_tusks" /></MembersOnly>} />
+        <Route path="/mine" element={<MembersOnly><MineDeals clan="black_tusks" /></MembersOnly>} />
+        <Route path="/expansion" element={<MembersOnly><Expansion clan="black_tusks" /></MembersOnly>} />
+        <Route path="/scorned/notices" element={<MembersOnly><NoticeBoard clan="scorned" /></MembersOnly>} />
+        <Route path="/scorned/oath" element={<MembersOnly><Oath clan="scorned" /></MembersOnly>} />
+        <Route path="/scorned/deceased" element={<MembersOnly><Deceased clan="scorned" /></MembersOnly>} />
+        <Route path="/scorned/mine" element={<MembersOnly><MineDeals clan="scorned" /></MembersOnly>} />
+        <Route path="/scorned/expansion" element={<MembersOnly><Expansion clan="scorned" /></MembersOnly>} />
+        {/* shared by both clans */}
         <Route path="/members" element={<MembersOnly><Members /></MembersOnly>} />
-        <Route path="/deceased" element={<MembersOnly><Deceased /></MembersOnly>} />
         <Route path="/roles" element={<MembersOnly><Roles /></MembersOnly>} />
-        <Route path="/mine" element={<MembersOnly><MineDeals /></MembersOnly>} />
-        <Route path="/expansion" element={<MembersOnly><Expansion /></MembersOnly>} />
         <Route path="/map" element={<MembersOnly><MiningMap /></MembersOnly>} />
         <Route path="/ledger" element={<MembersOnly><Ledger /></MembersOnly>} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {profile?.must_change_password && <ChangePassword forced onDone={reload} />}

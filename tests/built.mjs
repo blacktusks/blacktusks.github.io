@@ -32,7 +32,7 @@ const page = await (await browser.newContext({ viewport: { width: 1280, height: 
 const errors = []; page.on('pageerror', (e) => errors.push(e.message));
 const base = 'http://localhost:4188' + PREFIX;
 await page.goto(base); await page.waitForSelector('.menu__nav');
-ok((await page.locator('.menu__item').allTextContents()).join('|') === 'Sign In|Code of Mauloch', 'the built app opens to the guest menu');
+ok((await page.locator('.menu__item').allTextContents()).join('|') === 'Sign In|Settings|Code of Mauloch', 'the built app opens to the guest menu');
 await page.waitForSelector('canvas.banner.is-ready', { timeout: 15000 }).then(() => ok(true, 'banner textures load from the sub-path'), () => ok(false, 'banner textures load from the sub-path'));
 ok(await page.evaluate(() => { const i = document.querySelector('.scene__bg'); return i.complete && i.naturalWidth > 0; }), 'background image loads');
 ok(await page.evaluate(() => getComputedStyle(document.querySelector('.scene__smoke i')).backgroundImage.includes('smoke')), 'smoke texture resolves');
@@ -53,7 +53,7 @@ ok(sw.endsWith(PREFIX), 'the service worker registers for the sub-path', sw);
 }
 ok(await page.evaluate(() => document.fonts.ready.then(() => document.fonts.check('300 20px "Antonio Variable"'))), 'the menu font loads');
 await page.goto(base + '#/sign-in'); await page.getByLabel('Name').fill('nick'); await page.getByLabel('Password').fill('TestPass123'); await page.getByRole('button', { name: 'Sign in' }).click();
-await page.waitForSelector('.menu__nav'); ok((await page.locator('.menu__item').count()) === 12, 'sign-in works in the built app');
+await page.waitForSelector('.menu__nav'); ok((await page.locator('.menu__item').count()) === 14, 'sign-in works in the built app');
 await page.goto(base + '#/map'); await page.waitForTimeout(2500); ok((await page.locator('.leaflet-tile-loaded').count()) > 3, 'map tiles load from the sub-path');
 await page.goto(base + '#/ledger'); await page.waitForSelector('.lrow', { timeout: 10000 }); ok((await page.locator('.lrow').count()) > 5, 'the item catalog loads from the sub-path');
 // offline: the shell and the lore still open

@@ -2,6 +2,7 @@
 // them and small flames flying out in every direction, each turning slowly as it goes. Used by
 // Pay Respect on a fallen clanmate's card and Praise Malacath at the shrine. Nothing is saved.
 import { useEffect, useRef, useState } from 'react';
+import { sfx, type Sfx } from '../lib/sound';
 
 interface Spark { dx: number; dy: number; r0: number; r1: number; s: number; d: number; delay: number }
 interface Burst { id: number; sparks: Spark[] }
@@ -21,14 +22,15 @@ function sparks(): Spark[] {
   });
 }
 
-export function FireBurstButton({ label, said, onPress, className = 'btn' }: {
-  label: string; said: string; onPress?: () => void; className?: string;
+export function FireBurstButton({ label, said, onPress, className = 'btn', sound }: {
+  label: string; said: string; onPress?: () => void; className?: string; sound?: Sfx;
 }) {
   const [bursts, setBursts] = useState<Burst[]>([]);
   const next = useRef(0); const timers = useRef<number[]>([]);
   useEffect(() => () => { timers.current.forEach((t) => window.clearTimeout(t)); }, []);
   const press = () => {
     const id = ++next.current;
+    if (sound) sfx(sound);
     setBursts((b) => [...b.slice(-4), { id, sparks: sparks() }]);
     // gone as soon as it has faded, whether or not the browser was drawing at the time
     timers.current.push(window.setTimeout(() => setBursts((b) => b.filter((x) => x.id !== id)), LIFE_MS));

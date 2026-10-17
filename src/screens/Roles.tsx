@@ -5,7 +5,15 @@ import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { TAGS, isOfficer, type TagInfo } from '../lib/roles';
 import type { RoleNote } from '../lib/types';
-import { Modal, Page, TagChip } from '../components/ui';
+import { ClanTag, Modal, Page, TagChip } from '../components/ui';
+import { CLANS } from '../lib/clan';
+import { sfx } from '../lib/sound';
+
+// Clan tags sit apart from the role tags: which clan a member belongs to. A role counts within its own clan.
+const CLAN_ABOUT = {
+  black_tusks: 'Sworn to the Black Tusks, the clan of Largashbur. Their home screen is the Black Tusks’.',
+  scorned: 'Sworn to the Scorned, the clan of Narzulbur. Their home screen is the Scorned’s.',
+};
 
 const MAX = 400;
 
@@ -19,8 +27,8 @@ function RoleEditor({ tag, text, custom, onClose, onSaved }: { tag: TagInfo; tex
       ? await supabase.from('role_notes').upsert({ tag: tag.id, about: clean })
       : await supabase.from('role_notes').delete().eq('tag', tag.id);
     setBusy(false);
-    if (error) return setError(/row-level security|permission/i.test(error.message) ? 'Only clan officers can change these descriptions.' : error.message);
-    onSaved(); onClose();
+    if (error) { sfx('denied'); return setError(/row-level security|permission/i.test(error.message) ? 'Only clan officers can change these descriptions.' : error.message); }
+    sfx('save'); onSaved(); onClose();
   };
   return (
     <Modal title={`What ${tag.label} means`} onClose={onClose}>
@@ -69,6 +77,16 @@ export default function Roles() {
         </ul>
       )}
       <p className="hint" style={{ textAlign: 'center', marginTop: 18 }}>A member can hold more than one tag. Officers hand them out on the Members screen.</p>
+      <h2 className="roles__h">Clan tags</h2>
+      <ul className="roles">
+        {CLANS.map((c) => (
+          <li key={c} className="roles__row">
+            <div className="roles__tag"><ClanTag id={c} /></div>
+            <p className="roles__about">{CLAN_ABOUT[c]}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="hint" style={{ textAlign: 'center', marginTop: 18 }}>Every member carries at least one clan tag. A role counts within its own clan: the Scorned Chieftain leads the Scorned. Only the Forgemaster changes clan tags.</p>
       {editing && <RoleEditor tag={editing} text={text(editing)} custom={!!notes?.[editing.id]} onClose={() => setEditing(null)} onSaved={load} />}
     </Page>
   );

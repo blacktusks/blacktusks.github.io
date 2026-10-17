@@ -43,6 +43,8 @@ export default defineConfig({
           // item pictures carry a stamp of their contents in the address (?v=), so an address never changes its picture
           { urlPattern: /\/items\/.*\.webp(\?|$)/, handler: 'CacheFirst', options: { cacheName: 'item-pictures-v2', expiration: { maxEntries: 500 } } },
           { urlPattern: /\/storage\/v1\/object\/public\//, handler: 'StaleWhileRevalidate', options: { cacheName: 'item-images', expiration: { maxEntries: 600 } } },
+          // the music and menu sounds: fetched the first time they play, then kept
+          { urlPattern: /\/sounds\/.*\.mp3$/, handler: 'CacheFirst', options: { cacheName: 'sounds-v1', expiration: { maxEntries: 20 } } },
         ],
       },
     }),

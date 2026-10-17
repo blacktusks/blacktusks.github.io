@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { isForgemaster, isHerald } from '../lib/roles';
 import type { ChangelogEntry } from '../lib/types';
 import { Board } from '../components/Board';
+import { CLAN, useClanScreen, type Clan } from '../lib/clan';
+import { sfx } from '../lib/sound';
 import { Confirm, Modal, Page } from '../components/ui';
 
 function EntryEditor({ entry, onClose, onSaved }: { entry: ChangelogEntry | null; onClose: () => void; onSaved: () => void }) {
@@ -15,8 +17,8 @@ function EntryEditor({ entry, onClose, onSaved }: { entry: ChangelogEntry | null
     const row = { version: version.trim(), title: title.trim(), body, released_at: date };
     const { error } = entry ? await supabase.from('changelog').update(row).eq('id', entry.id) : await supabase.from('changelog').insert(row);
     setBusy(false);
-    if (error) return setError(error.message);
-    onSaved(); onClose();
+    if (error) { sfx('denied'); return setError(error.message); }
+    sfx('save'); onSaved(); onClose();
   };
   return (
     <Modal title={entry ? 'Edit entry' : 'New change log entry'} onClose={onClose}>
@@ -87,20 +89,22 @@ function Changelog({ canEdit, adding, onAddDone }: { canEdit: boolean; adding: b
   );
 }
 
-export default function NoticeBoard() {
+/** Each clan has its own Notice Board; the change log is the same on both. Any clan's officers post on either board. */
+export default function NoticeBoard({ clan = 'black_tusks' }: { clan?: Clan }) {
+  useClanScreen(clan);
   const { profile } = useAuth(); const tags = profile!.tags;
   const [tab, setTab] = useState<'notices' | 'log'>('notices');
   const [composing, setComposing] = useState(false);
   const canPost = tab === 'notices' ? isHerald(tags) : isForgemaster(tags);
   return (
-    <Page title="Notice Board" width="wide"
+    <Page title="Notice Board" sub={`${CLAN[clan].title} of ${CLAN[clan].stronghold}`} width="wide"
       bar={canPost && <button className="btn btn--go" onClick={() => setComposing(true)}>{tab === 'notices' ? 'Post a notice' : 'Add an entry'}</button>}>
       <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'notices'} className={`tabs__one ${tab === 'notices' ? 'is-on' : ''}`} onClick={() => { setTab('notices'); setComposing(false); }}>Announcements</button>
-        <button role="tab" aria-selected={tab === 'log'} className={`tabs__one ${tab === 'log' ? 'is-on' : ''}`} onClick={() => { setTab('log'); setComposing(false); }}>Change log</button>
+        <button role="tab" aria-selected={tab === 'notices'} className={`tabs__one ${tab === 'notices' ? 'is-on' : ''}`} onClick={() => { setTab('notices'); setComposing(false); sfx('hover'); }}>Announcements</button>
+        <button role="tab" aria-selected={tab === 'log'} className={`tabs__one ${tab === 'log' ? 'is-on' : ''}`} onClick={() => { setTab('log'); setComposing(false); sfx('hover'); }}>Change log</button>
       </div>
       {tab === 'notices'
-        ? <Board table="announcements" canWrite={isHerald(tags)} withExpiry noun="notice" composing={composing} onComposeDone={() => setComposing(false)}
+        ? <Board key={clan} table="announcements" clan={clan} canWrite={isHerald(tags)} withExpiry noun="notice" composing={composing} onComposeDone={() => setComposing(false)}
             empty={isHerald(tags) ? 'The board is bare. Post the first notice.' : 'The board is bare. Nothing has been posted for you yet.'} />
         : <Changelog canEdit={isForgemaster(tags)} adding={composing} onAddDone={() => setComposing(false)} />}
     </Page>
