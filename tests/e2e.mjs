@@ -390,11 +390,11 @@ console.log('roles');
 {
   await go(nick, '/roles', 800); await nick.waitForSelector('.roles__row');
   const roleRow = async (page, name) => (await page.locator('.roles__row', { hasText: name }).first().textContent()).replace(/\s+/g, ' ');
-  ok((await nick.locator('.page__title').textContent()) === 'Roles' && (await nick.locator('.roles').first().locator('.roles__row').count()) === 11 && !(await nick.textContent('.roles')).includes('Daedric'),
-    'Roles explains each of the eleven tags, and Daedric is not among them');
+  ok((await nick.locator('.page__title').textContent()) === 'Roles' && (await nick.locator('.roles').first().locator('.roles__row').count()) === 10 && !(await nick.textContent('.roles')).includes('Daedric'),
+    'Roles explains each of the eleven tags on ten lines (the two Tusks share one), and Daedric is not among them');
   ok((await nick.locator('.roles').nth(1).locator('.pennant').allTextContents()).join('|') === 'The Black Tusks Clan|The Scorned Clan' && (await nick.locator('.roles').nth(1).locator('button').count()) === 0,
     'and, apart from them, the two clan tags');
-  ok((await nick.locator('.roles__row .tag').allTextContents()).join('|') === 'Chieftain|Right Tusk|Left Tusk|Wise Woman|Forgemaster|Blooded|Blood-Kin|Kinsmen|Un-Blooded|Ally|Deceased', 'in standing order', (await nick.locator('.roles__row .tag').allTextContents()).join('|'));
+  ok((await nick.locator('.roles__row .tag').allTextContents()).join('|') === 'Chieftain|Left Tusk|Right Tusk|Wise Woman|Forgemaster|Blooded|Blood-Kin|Kinsmen|Un-Blooded|Ally|Deceased', 'in standing order, the Left Tusk beside the Right Tusk', (await nick.locator('.roles__row .tag').allTextContents()).join('|'));
   ok((await roleRow(nick, 'Blooded')).includes('Sworn and proven.'), 'each starts with a short description');
   await nick.getByRole('button', { name: 'Edit Blooded' }).click(); await nick.waitForSelector('.modal');
   ok((await nick.getByLabel('Description').inputValue()) === 'Sworn and proven.' && !(await has(nick, 'button', 'Use the original')), 'an officer edits a description starting from what is shown');
@@ -406,6 +406,16 @@ console.log('roles');
   await nick.getByRole('button', { name: 'Edit Blooded' }).click(); await nick.waitForSelector('.modal');
   await nick.getByRole('button', { name: 'Use the original' }).click(); await nick.waitForFunction(() => !document.querySelector('.modal')); await nick.waitForTimeout(400);
   ok((await roleRow(nick, 'Blooded')).includes('Sworn and proven.'), 'an officer can hand a description back to the original');
+  // the two Tusks: one line, one description, saved for both
+  const tusks = nick.locator('.roles__row', { hasText: 'Right Tusk' }).first();
+  ok((await tusks.locator('.tag').allTextContents()).join('|') === 'Left Tusk|Right Tusk', 'the Left Tusk and Right Tusk share one line, the Left Tusk first');
+  await nick.getByRole('button', { name: 'Edit Left Tusk and Right Tusk' }).click(); await nick.waitForSelector('.modal');
+  await nick.getByLabel('Description').fill('The Chieftain\'s two generals, equal in duty.'); await nick.getByRole('button', { name: 'Save', exact: true }).click();
+  await nick.waitForFunction(() => !document.querySelector('.modal')); await nick.waitForTimeout(400);
+  const notes = await nick.evaluate(async () => (await (await import('/src/lib/supabase.ts')).supabase.from('role_notes').select('tag, about').in('tag', ['left_tusk', 'right_tusk'])).data);
+  ok((await roleRow(nick, 'Right Tusk')).includes('equal in duty') && notes?.length === 2 && notes.every((n) => n.about.includes('equal in duty')), 'and editing it saves the words for both tags', JSON.stringify(notes));
+  await nick.getByRole('button', { name: 'Edit Left Tusk and Right Tusk' }).click(); await nick.waitForSelector('.modal');
+  await nick.getByRole('button', { name: 'Use the original' }).click(); await nick.waitForFunction(() => !document.querySelector('.modal'));
   // the fallen, as a plain member sees them
   await go(ugak, '/deceased', 900); await ugak.waitForSelector('.roster__row');
   await ugak.getByText('Durak Iron-Jaw').click(); await ugak.waitForSelector('.modal');

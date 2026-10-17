@@ -392,8 +392,9 @@
 /* ── roles: what each tag means ── */
 .roles { list-style: none; margin: 0 auto; padding: 0; max-width: 760px; border-top: 1px solid var(--line-2); }
 .roles__h { margin: 34px 0 12px; text-align: center; font: 300 20px/1.2 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--bone-2); }
-.roles__row { display: grid; grid-template-columns: minmax(150px, max-content) minmax(0, 1fr) auto; gap: 8px 18px; align-items: start; padding: 14px 4px; border-bottom: 1px solid var(--line-2); }
+.roles__row { display: grid; grid-template-columns: minmax(190px, max-content) minmax(0, 1fr) auto; gap: 8px 18px; align-items: start; padding: 14px 4px; border-bottom: 1px solid var(--line-2); }
 .roles__tag { padding-top: 3px; }
+.roles__chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .roles__about { margin: 0; font-size: 18px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
 @media (max-width: 560px) {
   .roles__row { grid-template-columns: minmax(0, 1fr) auto; }

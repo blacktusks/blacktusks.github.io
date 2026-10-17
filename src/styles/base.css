@@ -78,7 +78,8 @@ img { max-width: 100%; }
    sized from the menu's own box (--mh and --mw are 1% of its height and width), not from the
    browser's idea of the screen, which on phones changes as its bars slide in and out.
    Nothing can then sit off-screen, or stop short of the screen's edge, waiting for a swipe. */
-.menu { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 1; overflow: hidden; display: flex; --mh: 1vh; --mw: 1vw; }
+/* clip, not hidden: a hidden box can still be scrolled sideways by a script or a focused button, and the menu then slides off-centre */
+.menu { position: fixed; top: 0; left: 0; right: 0; height: var(--full, 100%); z-index: 1; overflow: hidden; overflow: clip; display: flex; --mh: 1vh; --mw: 1vw; }
 @supports (height: 1dvh) { .menu { --mh: 1dvh; --mw: 1dvw; } html.is-app .menu { --mh: 1vh; --mw: 1vw; } }
 @supports (container-type: size) { .menu, html.is-app .menu { container-type: size; --mh: 1cqh; --mw: 1cqw; } }
 .banner { display: block; width: 100%; aspect-ratio: 1; filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); }
