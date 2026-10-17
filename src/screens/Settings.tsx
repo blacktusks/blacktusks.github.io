@@ -53,7 +53,7 @@ export default function Settings() {
           <div className="panel__head"><h2 className="panel__title">Menu sounds</h2></div>
           <div className="panel__body">
             <Toggle id="set-effects" label="Menu sounds" disabled={off} on={s.effects} onChange={(v) => setSound({ effects: v })}
-              about="The drum when you choose, the anvil when something is saved, fire when you praise Malacath." />
+              about="A knock of wood when you choose, the anvil when something is saved, fire when you praise Malacath." />
             <Volume id="set-effects-vol" label="Menu sound volume" disabled={off || !s.effects} value={s.effectsVolume} onChange={(v) => setSound({ effectsVolume: v })} />
             <button type="button" className="btn btn--small" disabled={off || !s.effects} onClick={() => sfx('select')}>Play a sample</button>
           </div>

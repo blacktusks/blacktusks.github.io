@@ -15,9 +15,13 @@ console.log('music');
   const got = watch(p);
   await p.waitForSelector('.menu__nav'); await p.waitForTimeout(800);
   ok(got.length === 0, 'nothing is fetched or played before the first tap', got.join(','));
+  ok(await p.locator('.menu__sound.is-asleep').count() === 1 && (await p.getAttribute('.menu__sound', 'title')) === 'Tap anywhere to start the sound',
+    'before the first tap the sound button glows, saying a tap starts the sound');
   await p.mouse.click(5, 5); await until(p, () => got.includes('theme_stranger'));
   ok(got.includes('theme_stranger') && !got.includes('theme_black_tusks'), 'signed out, the first tap starts the stranger\'s theme', got.join(','));
   ok(got.includes('ui_select') && got.includes('ui_hover'), 'and the menu sounds are fetched with it');
+  ok(await until(p, () => true, 300) && await p.locator('.menu__sound.is-asleep').count() === 0 && (await p.getAttribute('.menu__sound', 'title')) === 'Sound is on',
+    'once the sound is going, the button stops glowing');
   ok(await p.evaluate(() => { const b = document.querySelector('.menu__sound'); return !!b && b.getAttribute('aria-pressed') === 'true'; }), 'the home screen has a sound button, on by default');
   await t.signIn(p, 'nick'); await until(p, () => got.includes('theme_black_tusks'));
   ok(got.includes('theme_black_tusks'), 'signed in as a Black Tusk, the Black Tusk theme takes over', got.join(','));
@@ -39,6 +43,16 @@ console.log('music');
   ok((await p.getAttribute('.menu__sound', 'aria-pressed')) === 'false', 'the home screen\'s sound button shows it off');
   await p.click('.menu__sound');
   ok((await p.getAttribute('.menu__sound', 'aria-pressed')) === 'true', 'and turns it back on');
+  await p.context().close();
+}
+{
+  // the glowing button itself: a tap on it starts the sound, it does not turn it off; the remade menu sounds have new addresses
+  const p = await t.open(); const got = watch(p); const urls = [];
+  p.on('request', (r) => { if (/\/sounds\//.test(r.url())) urls.push(r.url().replace(/^.*\/sounds\//, '')); });
+  await p.waitForSelector('.menu__sound.is-asleep');
+  await p.click('.menu__sound'); await until(p, () => got.includes('theme_stranger'));
+  ok(got.includes('theme_stranger') && (await p.getAttribute('.menu__sound', 'aria-pressed')) === 'true', 'tapping the glowing sound button starts the sound and leaves it on', got.join(','));
+  ok(urls.includes('ui_select.mp3?v=2') && urls.includes('ui_back.mp3?v=2') && urls.includes('ui_praise.mp3'), 'the new menu sounds are fetched from new addresses, so no phone keeps the old click', urls.join(','));
   await p.context().close();
 }
 {

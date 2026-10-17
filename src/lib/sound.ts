@@ -48,12 +48,15 @@ let musicBus: GainNode | null = null, fxBus: GainNode | null = null;
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
 const ready = new Map<string, AudioBuffer>();
 
+/** A sound remade after its first release gets a new address, so a copy a phone has kept is never played again. */
+const REV: Record<string, number> = { ui_hover: 2, ui_select: 2, ui_back: 2, ui_open: 2, ui_save: 2, ui_denied: 2 };
+
 function load(name: string): Promise<AudioBuffer | null> {
   if (!ctx) return Promise.resolve(null);
   let p = buffers.get(name);
   if (!p) {
     const c = ctx;
-    p = fetch(`./sounds/${name}.mp3`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+    p = fetch(`./sounds/${name}.mp3${REV[name] ? `?v=${REV[name]}` : ''}`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
       // the callback form, for older Safari
       .then((data) => new Promise<AudioBuffer>((ok, bad) => c.decodeAudioData(data, ok, bad)))
       .then((b) => { ready.set(name, b); return b; })
@@ -63,16 +66,38 @@ function load(name: string): Promise<AudioBuffer | null> {
   return p;
 }
 
+/** Each volume glides to where the settings put it, from wherever it is now. Anchored to the clock as it reads at
+ *  this moment, so a level set while the sound was still asleep is set again, properly, once it wakes. */
 function applyVolumes() {
   if (!ctx || !musicBus || !fxBus) return;
   const now = ctx.currentTime;
-  musicBus.gain.setTargetAtTime(settings.muted || !settings.music ? 0 : settings.musicVolume * 0.9, now, 0.15);
-  fxBus.gain.setTargetAtTime(settings.muted || !settings.effects ? 0 : settings.effectsVolume, now, 0.05);
+  const glide = (g: AudioParam, to: number, tc: number) => { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(to, now, tc); };
+  glide(musicBus.gain, settings.muted || !settings.music ? 0 : settings.musicVolume * 0.9, 0.15);
+  glide(fxBus.gain, settings.muted || !settings.effects ? 0 : settings.effectsVolume, 0.05);
+}
+
+// Whether the browser lets the app make sound yet (the first tap). Until then the sound button says to tap.
+let awake = false, awakeAt = -1e9;
+const awakeSubs = new Set<() => void>();
+function setAwake(v: boolean) { if (awake !== v) { awake = v; if (v) awakeAt = performance.now(); awakeSubs.forEach((f) => f()); } }
+/** The sound woke with the tap that is happening now (the press wakes it, the click lands just after). */
+export const wokeJustNow = () => performance.now() - awakeAt < 900;
+export const useSoundAwake = (): boolean => useSyncExternalStore((f) => { awakeSubs.add(f); return () => { awakeSubs.delete(f); }; }, () => awake, () => false);
+
+/** The sound has woken (or woken again): levels set afresh and the right theme started. */
+function woke() {
+  if (!ctx || ctx.state !== 'running') return;
+  setAwake(true); applyVolumes(); void updateMusic();
 }
 
 const UI: Sfx[] = ['hover', 'select', 'open', 'back', 'save', 'denied', 'praise', 'respect', 'switch'];
-/** Called on the first tap or key: browsers allow sound only from then on. */
-function unlock() {
+let primed = false;
+/** Called on every tap or key. Browsers allow sound only from inside one, so the sound is made, woken and
+ *  (on iPhones) started from right here; a later tap tries again if the first did not take. */
+function unlock(e: Event) {
+  // a finger counts as a tap when it lifts, not when it lands; a mouse counts when pressed
+  if (e.type === 'pointerdown' && (e as PointerEvent).pointerType !== 'mouse') return;
+  if (document.hidden) return;
   if (!ctx) {
     const AC = window.AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
@@ -80,20 +105,25 @@ function unlock() {
     musicBus = ctx.createGain(); fxBus = ctx.createGain();
     musicBus.gain.value = 0; fxBus.gain.value = 0;
     musicBus.connect(ctx.destination); fxBus.connect(ctx.destination);
-    applyVolumes();
+    ctx.addEventListener('statechange', () => { if (ctx?.state === 'running') woke(); else setAwake(false); });
     UI.forEach((s) => { void load('ui_' + s); });
   }
-  if (ctx.state !== 'running' && !document.hidden) void ctx.resume().then(() => updateMusic());
-  else void updateMusic();
+  // iPhones stay silent, even while saying the sound is running, until a sound has been started inside a tap:
+  // one silent sample does it.
+  if (!primed || ctx.state !== 'running') {
+    try { const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); s.connect(ctx.destination); s.start(0); primed = true; } catch { /* tried */ }
+  }
+  if (ctx.state !== 'running') void ctx.resume().then(woke, () => undefined);
+  else if (!awake || !playing) woke();
 }
 if (typeof window !== 'undefined') {
   const opts = { capture: true, passive: true } as const;
-  for (const e of ['pointerdown', 'touchend', 'keydown', 'click'] as const) window.addEventListener(e, unlock, opts);
+  for (const e of ['pointerdown', 'mousedown', 'pointerup', 'touchend', 'keydown', 'click'] as const) window.addEventListener(e, unlock, opts);
   // out of sight, out of hearing: phones keep pages alive in the background
   document.addEventListener('visibilitychange', () => {
     if (!ctx) return;
     if (document.hidden) void ctx.suspend();
-    else void ctx.resume().then(() => updateMusic());
+    else void ctx.resume().then(woke, () => undefined);
   });
 }
 

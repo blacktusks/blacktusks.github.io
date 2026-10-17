@@ -90,11 +90,12 @@ canvas.banner.is-ready { opacity: 1; }
   margin: 0 0 calc(var(--mh) * -1); text-align: center; white-space: nowrap;
   font: 300 clamp(22px, min(calc(var(--mh) * 5.6), calc(var(--mw) * 3.6)), 64px)/1 var(--ui); letter-spacing: 0.26em; text-indent: 0.26em; text-transform: uppercase;
   color: #f6ead6; text-shadow: 0 0 22px rgba(255, 150, 80, 0.38), 0 2px 14px #000, 0 0 3px #000;
-  transition: opacity 0.9s ease, filter 0.9s ease, color 0.9s ease, text-shadow 0.9s ease;
+  transition: opacity 0.9s ease, color 0.9s ease, text-shadow 0.9s ease;
 }
 .menu__flag { position: relative; }
-.menu__flag .banner { transition: opacity 0.9s ease, filter 0.9s ease, transform 0.9s ease; }
-/* The switch between clans: the banner sinks into fog and the other rises out of it. */
+.menu__flag .banner { transition: opacity 0.9s ease; }
+/* The switch between clans: the banner fades into a drift of smoke and the other comes out of it, sharp the whole
+   way (no blur). The smoke is the fires' own: dark and warm, and thin enough to see the stronghold through. */
 .menu__fog { position: absolute; left: -22%; right: -22%; top: -14%; bottom: -10%; pointer-events: none; opacity: 0; transform: scale(0.9);
   transition: opacity 0.9s ease, transform 0.9s ease; }
 /* soft puffs of mist (one sheet of three), each drifting and swelling on its own */
@@ -107,11 +108,11 @@ canvas.banner.is-ready { opacity: 1; }
 .menu__fog i:nth-child(5) { left: 17%; top: 20%; width: 68%; background-position: 50% 0; animation-duration: 8.4s; }
 .menu__fog i:nth-child(6) { left: 38%; top: -2%; width: 60%; background-position: 100% 0; animation-duration: 7s; animation-direction: alternate-reverse; }
 @keyframes mist { from { transform: translate3d(-5%, 3%, 0) scale(0.9) rotate(-5deg); } to { transform: translate3d(5%, -3%, 0) scale(1.1) rotate(6deg); } }
-.menu.is-fog-out .menu__fog { opacity: 1; transform: scale(1); }
+.menu.is-fog-out .menu__fog { opacity: 0.8; transform: scale(1); }
 .menu.is-fog-in .menu__fog { opacity: 0; transform: scale(1.14); transition-duration: 1.3s; }
-.menu.is-fog-out .menu__flag .banner { opacity: 0; filter: blur(9px) drop-shadow(0 18px 26px rgba(0, 0, 0, 0.75)); transform: scale(0.97); }
+.menu.is-fog-out .menu__flag .banner { opacity: 0; }
 .menu.is-fog-in .menu__flag .banner { transition-duration: 1.3s; }
-.menu.is-fog-out .menu__title { opacity: 0; filter: blur(6px); }
+.menu.is-fog-out .menu__title { opacity: 0; }
 .menu.is-fog-in .menu__title { transition-duration: 1.3s; }
 .menu__nav { transition: opacity 0.45s ease; }
 .menu.is-fog-out .menu__nav { opacity: 0; }
@@ -162,6 +163,10 @@ li:has(+ li > .menu__item--quiet) > .menu__item--quiet { margin-bottom: 0; }
 .menu__sound .menu__sound-w, .menu__sound .menu__sound-x { fill: none; stroke-width: 1.8; stroke-linecap: round; }
 .menu__sound:hover, .menu__sound:focus-visible { color: #fff; border-color: var(--bone-3); }
 .menu__sound.is-muted { color: var(--bone-3); }
+/* before the first tap the browser keeps the app silent: the button breathes with firelight until then */
+.menu__sound.is-asleep { animation: sound-asleep 2.4s ease-in-out infinite; }
+@keyframes sound-asleep { 50% { color: #fff; border-color: rgba(255, 150, 80, 0.8); box-shadow: 0 0 14px rgba(255, 120, 50, 0.45); } }
+@media (prefers-reduced-motion: reduce) { .menu__sound.is-asleep { animation: none; border-color: rgba(255, 150, 80, 0.8); } }
 
 /* Tall screens (phones held upright): the banner takes whatever room the list leaves, above it. */
 @media (orientation: portrait), (max-aspect-ratio: 21/20) {

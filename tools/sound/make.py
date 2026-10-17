@@ -437,20 +437,30 @@ def fire(length=1.4):
     roar = lp(noise(n), 900) * e + bp(noise(n), 900, 4000) * e * 0.35
     return roar + crackle(length, 30) * e * 1.5
 
+def wood_tok(f=587.3, strength=1.0, damp=1.0):
+    """A tuned block of hard wood knocked with a bone: a clear, dry pitch with no boom under it. Nothing in the
+    themes sounds like it (they are skins, rims and steel), so the menus never sound like part of the music."""
+    n = sec(0.3); t = T(n)
+    x = np.sin(2 * np.pi * f * t) * np.exp(-t * 34 * damp)
+    x += 0.42 * np.sin(2 * np.pi * f * 2.92 * t + 0.7) * np.exp(-t * 66 * damp)
+    x += 0.14 * np.sin(2 * np.pi * f * 5.3 * t + 1.3) * np.exp(-t * 120 * damp)
+    x += bp(noise(n), 3000, 10000) * np.exp(-t * 420) * 0.3
+    return hp(x, 300) * 0.55 * strength
+
 def ui_sounds():
     S = {}
-    # hovering a menu line: a soft tick of bone on wood
-    t = T(sec(0.08)); S['hover'] = one_shot([(0, (np.sin(2 * np.pi * 1350 * t) * np.exp(-t * 90) * 0.4 + bp(noise(len(t)), 2500, 7000) * np.exp(-t * 160) * 0.5) * 0.6, 1, 0)], 0.22, 0.6, 0.15) * db(-10)
-    # choosing: the drum answers, with a faint ring of steel
-    S['select'] = one_shot([(0, war_drum(0.35, 1.25), 0.9, 0), (0.0, tom(1.6, 0.7), 0.6, 0.1), (0.01, anvil(1500, 0.35, 1.2), 0.5, 0.2)], 1.3, 1.6, 0.25)
-    # going back: a breath of air falling away and a soft knock
-    S['back'] = one_shot([(0, whoosh(0.35, 250, 1400, up=False), 0.7, -0.2), (0.16, tom(1.1, 0.5), 0.6, 0)], 0.9)
+    # hovering a menu line: the faintest high tok
+    S['hover'] = one_shot([(0, wood_tok(1174.7, 0.5, 1.6), 1, 0)], 0.22, 0.4, 0.1) * db(-12)
+    # choosing: a quick flick of air and a clear tok of wood, pitched in the themes' D
+    S['select'] = one_shot([(0, hp(whoosh(0.07, 2600, 7500), 1500), 0.3, -0.1), (0.012, wood_tok(587.3), 0.9, 0.05), (0.012, wood_tok(880, 0.3, 1.3), 0.5, 0.1)], 0.42, 0.5, 0.1)
+    # going back: a breath of air falling away and a lower tok
+    S['back'] = one_shot([(0, whoosh(0.32, 250, 1400, up=False), 0.6, -0.2), (0.15, wood_tok(440), 0.8, 0)], 0.75, 0.6, 0.12)
     # a screen opening: parchment unrolled
-    S['open'] = one_shot([(0, parchment(0.45), 0.9, 0.1), (0.02, frame_drum(0.4), 0.5, 0)], 0.8, 1.0, 0.15)
+    S['open'] = one_shot([(0, parchment(0.45), 0.9, 0.1), (0.02, wood_tok(698.5, 0.4, 1.4), 0.5, 0)], 0.8, 0.8, 0.12)
     # saving: a hammer's ting on the anvil
-    S['save'] = one_shot([(0, anvil(1250, 0.8, 1.6), 0.9, 0.15), (0, tom(1.3, 0.6), 0.5, 0)], 1.7, 1.4, 0.2)
-    # refused: two dull knocks
-    S['denied'] = one_shot([(0, tom(0.75, 0.9), 0.9, 0), (0.13, tom(0.7, 0.7), 0.8, 0)], 0.8, 0.8, 0.12)
+    S['save'] = one_shot([(0, anvil(1250, 0.8, 1.6), 0.9, 0.15), (0, wood_tok(587.3, 0.5), 0.5, 0)], 1.7, 1.4, 0.2)
+    # refused: two dull, damped knocks
+    S['denied'] = one_shot([(0, wood_tok(311, 0.9, 1.9), 0.9, 0), (0.13, wood_tok(294, 0.75, 1.9), 0.8, 0)], 0.6, 0.5, 0.1)
     # Praise Malacath: fire bursts up over a deep drum and a low horn swell
     S['praise'] = one_shot([(0, war_drum(1.0, 0.9), 0.9, 0), (0.02, fire(1.6), 0.8, 0.1), (0.05, war_horn(73.4, 1.8, rise=0.25, fall=1.0, brightness=0.6), 0.8, -0.1)], 2.6, 2.4, 0.3)
     # Pay Respect: a slow fire and a single drum, quieter

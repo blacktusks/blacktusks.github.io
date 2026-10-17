@@ -6,7 +6,7 @@ import { CLAN, clanPath, otherClan, setSide, useSide, type Clan } from '../lib/c
 import { Banner, Scene } from '../components/Scene';
 import { ClanTags, Modal, Tags } from '../components/ui';
 import { splashHold, splashPass } from '../lib/splash';
-import { setSound, sfx, useSound, type Sfx } from '../lib/sound';
+import { setSound, sfx, useSound, useSoundAwake, wokeJustNow, type Sfx } from '../lib/sound';
 
 // The member's own card is only fetched when Profile is first opened.
 const ProfileCard = lazy(() => import('../components/MemberCard'));
@@ -103,6 +103,9 @@ export default function MainMenu() {
     items[next]?.focus(); e.preventDefault(); sfx('hover');
   };
   const sound = useSound();
+  // sound is on, but the browser holds it back until the first tap: the button glows to say so
+  const awake = useSoundAwake();
+  const asleep = !sound.muted && !awake;
 
   const other = otherClan(shown);
   type Item = [string, () => void, string?, Sfx?];      // label, what it does, look, the sound it makes
@@ -142,8 +145,12 @@ export default function MainMenu() {
             </div>
             <span className="menu__tools">
               {!standalone() && <button className="menu__install" onClick={() => setInstall(true)}>Add to home screen</button>}
-              <button className={`menu__sound ${sound.muted ? 'is-muted' : ''}`} aria-pressed={!sound.muted} aria-label={sound.muted ? 'Turn sound on' : 'Turn sound off'}
-                title={sound.muted ? 'Sound is off' : 'Sound is on'} onClick={() => { setSound({ muted: !sound.muted }); if (sound.muted) window.setTimeout(() => sfx('select'), 60); }}>
+              <button className={`menu__sound ${sound.muted ? 'is-muted' : ''} ${asleep ? 'is-asleep' : ''}`} aria-pressed={!sound.muted} aria-label={sound.muted ? 'Turn sound on' : 'Turn sound off'}
+                title={sound.muted ? 'Sound is off' : asleep ? 'Tap anywhere to start the sound' : 'Sound is on'} onClick={() => {
+                  // while it glows, a tap on it starts the sound rather than turning it off
+                  if (asleep || (!sound.muted && wokeJustNow())) { window.setTimeout(() => sfx('select'), 60); return; }
+                  setSound({ muted: !sound.muted }); if (sound.muted) window.setTimeout(() => sfx('select'), 60);
+                }}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" />
                   {sound.muted ? <path d="M16 9l5 6M21 9l-5 6" className="menu__sound-x" /> : <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" className="menu__sound-w" />}</svg>
               </button>

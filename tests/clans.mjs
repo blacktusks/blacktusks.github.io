@@ -61,9 +61,14 @@ console.log('0.4.0: two clans');
   await go(nick, '/', 1200);
   ok((await title(nick)) === 'The Scorned', 'having visited a Scorned screen, the home screen keeps to the Scorned side');
   await nick.getByRole('button', { name: 'Visit The Black Tusks' }).click();
-  await nick.waitForFunction(() => document.querySelector('.menu').classList.contains('is-fog-out'), null, { timeout: 3000 });
-  ok((await title(nick)) === 'The Scorned' && await nick.evaluate(() => !document.querySelector('.scene__layer--black_tusks').classList.contains('is-off')),
-    'the switch: the banner sinks into fog while Largashbur fades in behind');
+  // read inside the page the moment the switch begins, so a busy machine cannot miss it
+  const fog = await (await nick.waitForFunction(() => {
+    if (!document.querySelector('.menu').classList.contains('is-fog-out')) return false;
+    return { title: document.querySelector('.menu__title').textContent, bt: !document.querySelector('.scene__layer--black_tusks')?.classList.contains('is-off'),
+      sharp: [document.querySelector('.menu__flag .banner'), document.querySelector('.menu__title')].every((el) => !/blur/.test(getComputedStyle(el).filter)) };
+  }, null, { timeout: 3000, polling: 'raf' })).jsonValue();
+  ok(fog.title === 'The Scorned' && fog.bt, 'the switch: the banner sinks into fog while Largashbur fades in behind', JSON.stringify(fog));
+  ok(fog.sharp, 'the banner and the title fade sharp, never blurred');
   await nick.waitForFunction(() => document.querySelector('.menu__title').textContent === 'The Black Tusks', null, { timeout: 5000 });
   await nick.waitForFunction(() => !/is-fog/.test(document.querySelector('.menu').className), null, { timeout: 5000 });
   ok((await menu(nick)).includes('Black Tusk Oath') && (await menu(nick)).includes('Visit The Scorned'), 'then the Black Tusk banner, title and menu rise out of it');
