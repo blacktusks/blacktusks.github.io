@@ -22,8 +22,9 @@ CONTRAST = 1.1
 # name: (original, lift on the brightness before grading, size of the dimmed copy)
 PICTURES = {
     "largashbur": ("largashbur-original.webp", 1.0, (1200, 900)),
-    # Narzulbur is a darker, snowier screenshot: lifted a little first, so both strongholds sit at the same depth
-    "narzulbur": ("narzulbur-original.png", 1.18, (1200, 609)),
+    # Narzulbur is a darker, snowier screenshot (the longhouse at dusk, the game's HUD painted out and cropped
+    # away): lifted a little first, so both strongholds sit at the same depth
+    "narzulbur": ("narzulbur-original.png", 1.2, (1200, 556)),
 }
 
 def grade(name):

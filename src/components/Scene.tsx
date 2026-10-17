@@ -4,11 +4,11 @@ import { CLANS, useSide, type Clan } from '../lib/clan';
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** Each clan's stronghold behind its home screen: the picture's size, the point the layout keeps in view
- *  (Largashbur's campfire; at Narzulbur, the shrine stones before the longhouse), and where that point goes. */
+ *  (Largashbur's campfire; at Narzulbur, the yard before the longhouse door), and where that point goes. */
 interface Backdrop { w: number; h: number; fx: number; fy: number; dim: string; sharp: string; portrait: [number, number]; land: [number, number] }
 const BACKDROP: Record<Clan, Backdrop> = {
   black_tusks: { w: 2400, h: 1800, fx: 0.5038, fy: 0.5594, dim: './img/largashbur-dim.webp', sharp: './img/largashbur.webp', portrait: [0.3, 0.6], land: [0.56, 0.6] },
-  scorned: { w: 1920, h: 974, fx: 0.405, fy: 0.6, dim: './img/narzulbur-dim.webp', sharp: './img/narzulbur.webp', portrait: [0.42, 0.6], land: [0.56, 0.6] },
+  scorned: { w: 1920, h: 890, fx: 0.583, fy: 0.472, dim: './img/narzulbur-dim.webp', sharp: './img/narzulbur.webp', portrait: [0.5, 0.6], land: [0.56, 0.6] },
 };
 
 interface Fit { scale: number; left: number; top: number; fx: number; fy: number; portrait: boolean }
